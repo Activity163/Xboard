@@ -180,7 +180,7 @@ class UserController extends Controller
         $pageSize = $request->input('pageSize', 10);
 
         $userModel = User::query()
-            ->with(['plan:id,name', 'invite_user:id,email', 'group:id,name'])
+            ->with(['invite_user:id,email', 'group:id,name'])
             ->select((new User())->getTable() . '.*')
             ->selectRaw('(u + d) as total_used');
 
@@ -299,9 +299,7 @@ class UserController extends Controller
             }
         }
 
-        // 优化查询：使用with预加载plan关系，避免N+1问题
         $query = User::query()
-            ->with('plan:id,name')
             ->orderBy('id', 'asc')
             ->select([
                 'email',
@@ -311,8 +309,7 @@ class UserController extends Controller
                 'u',
                 'd',
                 'expired_at',
-                'token',
-                'plan_id'
+                'token'
             ]);
 
         if ($scope === 'selected') {
@@ -338,7 +335,6 @@ class UserController extends Controller
                 '总流量',
                 '剩余流量',
                 '套餐到期时间',
-                '订阅计划',
                 '订阅地址'
             ]);
 
@@ -353,7 +349,6 @@ class UserController extends Controller
                             Helper::trafficConvert($user->transfer_enable),
                             Helper::trafficConvert($user->transfer_enable - ($user->u + $user->d)),
                             $user->expired_at ? date('Y-m-d H:i:s', $user->expired_at) : '长期有效',
-                            $user->plan ? $user->plan->name : '无订阅',
                             Helper::getSubscribeUrl($user->token)
                         ];
                         fputcsv($output, $row);
@@ -396,7 +391,6 @@ class UserController extends Controller
             $user = $userService->createUser([
                 'email' => $email,
                 'password' => $request->input('password') ?? $email,
-                'plan_id' => $request->input('plan_id'),
                 'expired_at' => $request->input('expired_at'),
             ]);
 
@@ -421,7 +415,6 @@ class UserController extends Controller
             $usersData[] = [
                 'email' => $email,
                 'password' => $request->input('password') ?? $email,
-                'plan_id' => $request->input('plan_id'),
                 'expired_at' => $request->input('expired_at'),
             ];
         }
@@ -504,7 +497,6 @@ class UserController extends Controller
             $usersData[] = [
                 'email' => $email,
                 'password' => $request->input('password') ?? $email,
-                'plan_id' => $request->input('plan_id'),
                 'expired_at' => $request->input('expired_at'),
             ];
         }
@@ -617,10 +609,8 @@ class UserController extends Controller
 
         try {
             DB::beginTransaction();
-            $user->orders()->delete();
             $user->codes()->delete();
-            $user->stat()->delete();
-            $user->tickets()->delete();
+            $user->trafficResetLogs()->delete();
             $user->delete();
             DB::commit();
 

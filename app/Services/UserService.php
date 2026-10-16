@@ -60,19 +60,6 @@ class UserService
             ->get();
     }
 
-    public function getUnAvailbaleUsers()
-    {
-        return User::where(function ($query) {
-            $query->where('expired_at', '<', time())
-                ->orWhere('expired_at', 0);
-        })
-            ->where(function ($query) {
-                $query->where('plan_id', NULL)
-                    ->orWhere('transfer_enable', 0);
-            })
-            ->get();
-    }
-
     public function getUsersByIds($ids)
     {
         return User::whereIn('id', $ids)->get();
