@@ -6,6 +6,7 @@ use App\Http\Controllers\V2\Admin\PluginController;
 use App\Http\Controllers\V2\Admin\Server\GroupController;
 use App\Http\Controllers\V2\Admin\Server\RouteController;
 use App\Http\Controllers\V2\Admin\Server\ManageController;
+use App\Http\Controllers\V2\Admin\StubController;
 use App\Http\Controllers\V2\Admin\SystemController;
 use App\Http\Controllers\V2\Admin\TrafficResetController;
 use App\Http\Controllers\V2\Admin\UserController;
@@ -111,6 +112,54 @@ class AdminRoute
                 $router->get('user/{userId}/history', [TrafficResetController::class, 'userHistory']);
                 $router->post('reset-user', [TrafficResetController::class, 'resetUser']);
             });
+
+            // ------------------------------------------------------------------
+            // 已精简模块的降级路由（stub）
+            //
+            // 后台前端产物编译自上游完整版，仍会请求这些已删除模块的接口。
+            // 其中 server/machine/fetch 被前端以 60s 间隔轮询，缺失会导致后台
+            // 持续弹出 "route could not be found" 报错。
+            // 这里统一返回空数据，使页面显示为空列表。
+            // 详见 App\Http\Controllers\V2\Admin\StubController。
+            // ------------------------------------------------------------------
+
+            // 机器节点集群（已移除）—— 前端轮询，必须保留
+            $router->any('server/machine/{action}', [StubController::class, 'stub'])
+                ->where('action', '[a-zA-Z]+');
+
+            // 交易类：订单 / 套餐 / 优惠券 / 礼品卡 / 支付
+            foreach (['order', 'plan', 'coupon', 'gift-card', 'payment'] as $prefix) {
+                $router->any($prefix . '/{action}', [StubController::class, 'stub'])
+                    ->where('action', '[a-zA-Z-]+');
+            }
+
+            // 运营类：工单 / 知识库 / 公告
+            $router->any('ticket/{action}', [StubController::class, 'stub'])->where('action', '[a-zA-Z]+');
+            $router->any('knowledge/{action}', [StubController::class, 'stub'])->where('action', '[a-zA-Z]+');
+            $router->any('config/knowledge', [StubController::class, 'stub']);
+            $router->any('config/notice', [StubController::class, 'stub']);
+
+            // 统计类
+            $router->any('stat/{action}', [StubController::class, 'stub'])->where('action', '[a-zA-Z]+');
+
+            // 主题类
+            $router->any('theme/{action}', [StubController::class, 'stub'])->where('action', '[a-zA-Z]+');
+
+            // 邮件 / Telegram 等通知配置
+            $router->any('config/testSendMail', [StubController::class, 'stub']);
+            $router->any('config/setTelegramWebhook', [StubController::class, 'stub']);
+            $router->any('config/getEmailTemplate', [StubController::class, 'stub']);
+            $router->any('config/payment', [StubController::class, 'stub']);
+            $router->any('config/plugin', [StubController::class, 'stub']);
+            $router->any('config/theme', [StubController::class, 'stub']);
+
+            // 系统设置分组（前端按 tab 请求）
+            $router->any('config/system/{group}', [StubController::class, 'stub'])
+                ->where('group', '[a-zA-Z-]+');
+
+            // 流量审计插件（已移除）
+            $router->any('plugin/traffic-analytics/records/{action}', [StubController::class, 'stub'])
+                ->where('action', '[a-zA-Z]+');
         });
 
     }
