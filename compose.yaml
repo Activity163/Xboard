@@ -14,6 +14,8 @@ services:
   xboard:
     build: .
     image: xboard-slim:latest
+    # 固定容器名，让外挂的 Docker Caddy 可用 xboard:7001 反代
+    container_name: xboard
     restart: unless-stopped
     ports:
       - "7001:7001"
@@ -24,10 +26,20 @@ services:
       - ./storage/theme:/www/storage/theme
       - ./plugins:/www/plugins
       - redis-data:/data
+    # 外挂 Docker Caddy 反代时（ENABLE_CADDY=false，Octane 直接绑 7001），
+    # 打开 networks 段，name 填外层 Caddy 所在网络（docker network ls 查看）。
+    # 标记 external 而非由 compose 创建，两容器由此互访。
+    # networks:
+    #   - caddy-net
     environment:
       - RESOURCE_PROFILE=balanced      # minimal | balanced | performance | auto
       - ENABLE_HORIZON=true
+      # - ENABLE_CADDY=false           # 外挂 Caddy 反代时打开，少一跳代理
       - docker=true
+
+# networks:
+#   caddy-net:
+#     external: true
 
 volumes:
   redis-data:
