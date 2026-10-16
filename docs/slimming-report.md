@@ -144,3 +144,94 @@ git reset --hard <批次commit>      # 回退到某批次
 
 **入口地址**：`http://<域名>/<secure_path>`（本次测试环境为 `/d673bafd`）。
 
+
+---
+
+## 九、Docker 部署修复与验证（2026-10-17）
+
+用户习惯用 Docker 镜像安装，检查后发现 **Docker 这条线原本完全不可用**。
+
+### 9.1 致命问题：构建的是原版，不是精简版
+
+| 位置 | 原问题 | 修复 |
+|---|---|---|
+| `Dockerfile` | `rm -rf ./*` 后 `git clone` 上游 master + `git submodule` —— 构建出的镜像里是**原版 Xboard**，精简代码完全没被使用 | 改为 `COPY . /www`（.dockerignore 排除 .git/.github 等） |
+| `compose*.yaml` | `image: ghcr.io/cedar2025/xboard:latest`（官方镜像，同样是原版） | 改为 `build: .` + `image: xboard-slim:latest` |
+
+> 如果没发现这个问题，用户 `docker compose up -d` 拉起来的会是**几百 MB 的原版全功能面板**，跟精简工作毫无关系。
+
+### 9.2 已删模块的容器引用（会报错或空转）
+
+| 位置 | 问题 | 修复 |
+|---|---|---|
+| `supervisord.conf` | `[program:ws-server]` 执行 `artisan ws-server`，命令已删 → **无限重启失败** | 移除该 program |
+| `entrypoint.sh` | 每次启动调用 `artisan xboard:update`，命令已删 → 打印警告 | 移除该调用及 `redis_reachable()` 辅助函数 |
+| `entrypoint.sh` | `WS_HOST` / `WS_PORT` 变量 | 移除 |
+| `Caddyfile` | `/ws` 反代到 `127.0.0.1:8076`，无服务 → 502 | 移除该路由 |
+| `Dockerfile` | `ENABLE_WS_SERVER=true` | 移除 |
+| `compose.split.sample.yaml` + `Caddyfile.split` | split 模式依赖 ws-server 容器 | 删除这两个文件 |
+| `init.sh` / `update.sh` | `git submodule` → 无子模块，报错 | 移除 |
+| `update.sh` | `git reset --hard` 会覆盖本地精简代码；`xboard:update` 命令已删 | 移除两者 |
+
+### 9.3 composer.lock 重新生成
+
+原 lock 仍是精简前的（446KB），本地 `composer install` 会拉回已移除的包。从 Docker 构建产物中提取干净版本：
+
+- **446KB → 365KB**（净减 2226 行）
+- `.dockerignore` 移除 `composer.lock` 排除项，使构建直接使用锁定版本
+
+### 9.4 实测验证（Debian 12 / Docker 29.9.1 / Compose v5.6.0）
+
+```
+docker build                    → 成功（xboard-slim:latest，562MB / 126MB）
+容器内 xboard:install           → 成功（SQLite + 内置 Redis）
+supervisor 进程                 → octane / horizon / redis / caddy 全部 RUNNING（无 ws-server）
+后台页面 /8cec6376              → 200
+后台静态资源 js/css/locales     → 200
+后台 API（6 项）                → 全 200
+XrayR config/user/push          → 全 200
+push 后流量落库                 → u=4096 d=8192（与推送值一致，Horizon 正常消费队列）
+清空日志复测                    → 零错误
+容器内存占用                    → 798 MiB（含 octane + horizon + redis + caddy）
+```
+
+### 9.5 部署注意事项（实测踩坑）
+
+1. **Docker 必须配置 DNS**，否则镜像构建时 apk 报 `DNS: transient error`：
+   ```json
+   // /etc/docker/daemon.json
+   { "dns": ["223.5.5.5", "119.29.29.29", "8.8.8.8"] }
+   ```
+   然后 `systemctl restart docker`。若宿主机 DNS 走透明代理（返回 198.18.x.x），同样需要此项。
+
+2. **`xboard:install` 在检测到已有数据时会静默退出**。若 `.docker/.data/database.sqlite` 里已有表，`configureSqlite()` 会弹 `confirm('是否清空数据库')`，默认选项是**退出安装**，非交互环境下就直接返回、不报错。重装前先删：
+   ```bash
+   rm -f .docker/.data/database.sqlite*
+   rm -f .env && touch .env
+   ```
+
+3. **安装必须用官方命令**（会自动生成 APP_KEY 与 INSTALLED 标记），手动写 .env 会导致 octane 因缺 APP_KEY 无限重启：
+   ```bash
+   docker compose run --rm -e ENABLE_SQLITE=true -e ENABLE_REDIS=true \
+     -e ADMIN_ACCOUNT=admin@example.com xboard php artisan xboard:install
+   ```
+   注意加 `--rm` 且**不要加 `-it`**（远程 SSH 无 TTY 时会报
+   `cannot attach stdin to a TTY-enabled container`）。
+
+### 9.6 镜像构建与启动
+
+```bash
+# 构建（使用本地精简代码 + 锁定依赖）
+docker compose build
+
+# 首次安装
+rm -f .env && touch .env
+docker compose run --rm -e ENABLE_SQLITE=true -e ENABLE_REDIS=true \
+  -e ADMIN_ACCOUNT=admin@example.com xboard php artisan xboard:install
+
+# 启动
+docker compose up -d
+
+# 查看状态
+docker compose ps && docker compose logs -f
+```
