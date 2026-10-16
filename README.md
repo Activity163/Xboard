@@ -45,7 +45,7 @@
 | 统计 | 收入统计 / 用户流量日志 / 节点负载历史 |
 | 运维 | 在线更新 / 数据库备份 / 多主题切换 |
 | 基础设施 | WebSocket 节点通道 / 机器节点集群（machine）/ 设备数限制 / 流量审计队列 / 设备状态上报 |
-| 前端 | 用户 Web 前端（展示型主页） |
+| 前端 | 用户 Web 前端（展示型主页）/ 后台侧边栏的对应菜单入口（见「后台管理」） |
 | 协议 | trojan / hysteria / tuic / anytls / socks / naive / http / mieru |
 | 依赖 | stripe / google-cloud-storage / workerman / spatie-db-dumper / ip2region / linfo 等 11 个 |
 
@@ -242,19 +242,39 @@ docs/slimming-report.md 精简完成报告
 
 访问 `http://面板地址:7001/<secure_path>`（`secure_path` 在安装时打印，默认是 `crc32b(app.key)`）。
 
-**可用页面**：节点管理 · 用户管理 · 权限组 · 路由 · 系统设置 · 系统状态 · 插件 · 流量重置
+### 菜单（已按精简结果裁剪）
 
-**已移除模块的菜单入口**：订单 / 支付 / 套餐 / 优惠券 / 礼品卡 / 工单 / 知识库 / 公告 / 统计 / 主题 / 邮件模板 / 机器节点集群 —— 这些是前端 dist（编译自上游完整版）里写死的入口，后端模块已删。
+```
+系统管理 → 系统配置
+节点管理 → 节点管理 / 权限组管理 / 路由管理
+用户管理 → 用户管理
+```
 
-这些接口**由 `StubController` 统一接管**，返回 `success` + 空数据，所以：
+已从侧边栏移除：**仪表盘** · 订阅管理（套餐/订单/优惠券/礼品卡）· 工单管理 · 服务器管理 ·
+插件管理 · 主题配置 · 公告管理 · 支付配置 · 知识库管理。
 
-- 不会弹「The route xxx could not be found」报错
-- 其中 `server/machine/fetch` 会被前端以 60 秒间隔**轮询**，若返回 404 会导致后台持续报错——这是必须兜底的原因
-- 对应页面点进去是空列表，属于预期表现
+访问 `/` 会自动重定向到「节点管理」。
 
-实现见 `app/Http/Controllers/V2/Admin/StubController.php`（按 action 名自动判断返回 `[]` / `{}` / `true`），路由挂在 `app/Http/Routes/V2/AdminRoute.php` 末尾。
+裁剪方式是**直接修改 `public/assets/admin` 里的前端产物**（菜单数组 + 路由表），
+工具脚本见 [`strip_admin_ui.py`](strip_admin_ui.py)（默认 dry-run，`--apply` 才写盘）：
 
-> 为什么不直接重建前端？前端源码不在本仓库（上游独立维护），重建需 clone 上游 + 改 90 处引用 + 编译，且上游一更新就冲突。stub 方案零改动前端、不影响升级。
+```bash
+python strip_admin_ui.py            # 预览将要做的变更
+python strip_admin_ui.py --apply    # 执行（自动备份 .bak-menu-removal）
+```
+
+> 前端源码不在本仓库（上游独立维护），所以走 dist 级修改。若将来替换 dist，
+> 需重新跑一次该脚本。
+
+### 接口兜底
+
+已删模块的接口由 `StubController` 统一接管，返回 `success` + 空数据
+（`app/Http/Controllers/V2/Admin/StubController.php`，路由挂在
+`app/Http/Routes/V2/AdminRoute.php` 末尾）。按 action 名自动判断返回 `[]` / `{}` / `true`。
+
+**为什么菜单删了还需要兜底**：节点管理页（保留）会以 60 秒间隔轮询
+`/server/machine/fetch` 来填充「所属服务器」下拉框。若该接口 404，后台会持续弹
+「The route xxx could not be found」。因此 stub 是必需的安全网，不能一起删掉。
 
 ## 定时任务
 
