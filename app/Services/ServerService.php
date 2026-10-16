@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Server;
-use App\Models\ServerMachine;
 use App\Models\ServerRoute;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
@@ -26,25 +25,10 @@ class ServerService
         return $query->get()->append([
             'last_check_at',
             'last_push_at',
-            'online',
             'is_online',
             'available_status',
             'cache_key',
-            'load_status',
-            'metrics',
-            'online_conn'
         ]);
-    }
-
-    /**
-     * 获取机器下所有已启用节点
-     */
-    public static function getMachineNodes(ServerMachine $machine): Collection
-    {
-        return Server::where('machine_id', $machine->id)
-            ->where('enabled', true)
-            ->orderBy('sort', 'ASC')
-            ->get();
     }
 
     /**
@@ -63,7 +47,7 @@ class ServerService
             })
             ->orderBy('sort', 'ASC')
             ->get()
-            ->append(['last_check_at', 'last_push_at', 'online', 'is_online', 'available_status', 'cache_key', 'server_key']);
+            ->append(['last_check_at', 'last_push_at', 'is_online', 'available_status', 'cache_key', 'server_key']);
 
         $servers = collect($servers)->map(function ($server) use ($user) {
             // 判断动态端口
@@ -142,65 +126,6 @@ class ServerService
     }
 
     /**
-     * 处理节点在线设备汇报
-     */
-    public static function processAlive(int $nodeId, array $alive): void
-    {
-        $service = app(DeviceStateService::class);
-        foreach ($alive as $uid => $ips) {
-            $service->setDevices((int) $uid, $nodeId, (array) $ips);
-        }
-    }
-
-    /**
-     * 处理节点连接数汇报
-     */
-    public static function processOnline(Server $node, array $online): void
-    {
-        $cacheTime = max(300, (int) admin_setting('server_push_interval', 60) * 3);
-        $nodeType = $node->type;
-        $nodeId = $node->id;
-
-        foreach ($online as $uid => $conn) {
-            $cacheKey = CacheKey::get("USER_ONLINE_CONN_{$nodeType}_{$nodeId}", $uid);
-            Cache::put($cacheKey, (int) $conn, $cacheTime);
-        }
-    }
-
-    /**
-     * 处理节点负载状态汇报
-     */
-    public static function processStatus(Server $node, array $status): void
-    {
-        $nodeType = strtoupper($node->type);
-        $nodeId = $node->id;
-
-        $statusData = [
-            'cpu' => (float) ($status['cpu'] ?? 0),
-            'mem' => [
-                'total' => (int) ($status['mem']['total'] ?? 0),
-                'used' => (int) ($status['mem']['used'] ?? 0),
-            ],
-            'swap' => [
-                'total' => (int) ($status['swap']['total'] ?? 0),
-                'used' => (int) ($status['swap']['used'] ?? 0),
-            ],
-            'disk' => [
-                'total' => (int) ($status['disk']['total'] ?? 0),
-                'used' => (int) ($status['disk']['used'] ?? 0),
-            ],
-            'updated_at' => now()->timestamp,
-            'kernel_status' => $status['kernel_status'] ?? null,
-        ];
-
-        $cacheTime = max(300, (int) admin_setting('server_push_interval', 60) * 3);
-        cache([
-            CacheKey::get("SERVER_{$nodeType}_LOAD_STATUS", $nodeId) => $statusData,
-            CacheKey::get("SERVER_{$nodeType}_LAST_LOAD_AT", $nodeId) => now()->timestamp,
-        ], $cacheTime);
-    }
-
-    /**
      * 标记节点心跳
      */
     public static function touchNode(Server $node): void
@@ -209,42 +134,6 @@ class ServerService
             CacheKey::get('SERVER_' . strtoupper($node->type) . '_LAST_CHECK_AT', $node->id),
             time(),
             3600
-        );
-    }
-
-    /**
-     * Update node metrics and load status
-     */
-    public static function updateMetrics(Server $node, array $metrics): void
-    {
-        $nodeType = strtoupper($node->type);
-        $nodeId = $node->id;
-        $cacheTime = max(300, (int) admin_setting('server_push_interval', 60) * 3);
-
-        $metricsData = [
-            'uptime' => (int) ($metrics['uptime'] ?? 0),
-            'goroutines' => (int) ($metrics['goroutines'] ?? 0),
-            'active_connections' => (int) ($metrics['active_connections'] ?? 0),
-            'total_connections' => (int) ($metrics['total_connections'] ?? 0),
-            'total_users' => (int) ($metrics['total_users'] ?? 0),
-            'active_users' => (int) ($metrics['active_users'] ?? 0),
-            'inbound_speed' => (int) ($metrics['inbound_speed'] ?? 0),
-            'outbound_speed' => (int) ($metrics['outbound_speed'] ?? 0),
-            'cpu_per_core' => $metrics['cpu_per_core'] ?? [],
-            'load' => $metrics['load'] ?? [],
-            'speed_limiter' => $metrics['speed_limiter'] ?? [],
-            'gc' => $metrics['gc'] ?? [],
-            'api' => $metrics['api'] ?? [],
-            'ws' => $metrics['ws'] ?? [],
-            'limits' => $metrics['limits'] ?? [],
-            'updated_at' => now()->timestamp,
-            'kernel_status' => (bool) ($metrics['kernel_status'] ?? false),
-        ];
-
-        Cache::put(
-            CacheKey::get('SERVER_' . $nodeType . '_METRICS', $nodeId),
-            $metricsData,
-            $cacheTime
         );
     }
 

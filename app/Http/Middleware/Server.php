@@ -8,9 +8,6 @@ use App\Services\ServerService;
 use Closure;
 use Illuminate\Http\Request;
 
-/**
- * @deprecated use {@see ServerV2}
- */
 class Server
 {
     public function handle(Request $request, Closure $next, ?string $nodeType = null)

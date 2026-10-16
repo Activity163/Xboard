@@ -422,11 +422,6 @@ class Server extends Model
         return $this->hasMany(StatServer::class, 'server_id', 'id');
     }
 
-    public function machine(): \Illuminate\Database\Eloquent\Relations\BelongsTo
-    {
-        return $this->belongsTo(ServerMachine::class, 'machine_id');
-    }
-
     public function groups()
     {
         return ServerGroup::whereIn('id', $this->group_ids ?? [])->get();
@@ -466,20 +461,6 @@ class Server extends Model
     }
 
     /**
-     * 在线用户数访问器
-     */
-    protected function online(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId)) ?? 0;
-            }
-        );
-    }
-
-    /**
      * 是否在线访问器
      */
     protected function isOnline(): Attribute
@@ -514,46 +495,6 @@ class Server extends Model
                     return Helper::getServerKey($this->created_at, 16);
                 }
                 return null;
-            }
-        );
-    }
-
-    /**
-     * 指标指标访问器
-     */
-    protected function metrics(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_METRICS", $serverId));
-            }
-        );
-    }
-
-    /**
-     * 在线连接数访问器
-     */
-    protected function onlineConn(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                return $this->metrics['active_connections'] ?? 0;
-            }
-        );
-    }
-
-    /**
-     * 负载状态访问器
-     */
-    protected function loadStatus(): Attribute
-    {
-        return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId));
             }
         );
     }

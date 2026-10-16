@@ -2,7 +2,6 @@
 
 namespace App\Observers;
 
-use App\Jobs\NodeUserSyncJob;
 use App\Models\User;
 use App\Services\TrafficResetService;
 
@@ -19,30 +18,14 @@ class UserObserver
   {
     // With $afterCommit = true, isDirty() is always false after commit.
     // Use wasChanged() to detect what was actually modified.
-    $syncFields = ['group_id', 'uuid', 'speed_limit', 'device_limit', 'banned', 'expired_at', 'transfer_enable', 'u', 'd', 'plan_id'];
-    $needsSync = $user->wasChanged($syncFields);
-    $oldGroupId = $user->wasChanged('group_id') ? $user->getOriginal('group_id') : null;
-
     if ($user->wasChanged(['plan_id', 'expired_at'])) {
       $this->recalculateNextResetAt($user);
-    }
-
-    if ($needsSync) {
-      NodeUserSyncJob::dispatch($user->id, 'updated', $oldGroupId);
     }
   }
 
   public function created(User $user): void
   {
     $this->recalculateNextResetAt($user);
-    NodeUserSyncJob::dispatch($user->id, 'created');
-  }
-
-  public function deleted(User $user): void
-  {
-    if ($user->group_id) {
-      NodeUserSyncJob::dispatch($user->id, 'deleted', $user->group_id);
-    }
   }
 
   /**
