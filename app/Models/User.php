@@ -51,7 +51,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read User|null $invite_user 邀请人信息
  * @property-read ServerGroup|null $group 权限组
  * @property-read \Illuminate\Database\Eloquent\Collection<int, InviteCode> $codes 邀请码列表
- * @property-read \Illuminate\Database\Eloquent\Collection<int, StatUser> $stat 统计信息
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TrafficResetLog> $trafficResetLogs 流量重置记录
  * @property-read User|null $parent 父账户
  * @property-read string $subscribe_url 订阅链接（动态生成）
@@ -110,11 +109,6 @@ class User extends Authenticatable
     public function codes(): HasMany
     {
         return $this->hasMany(InviteCode::class, 'user_id', 'id');
-    }
-
-    public function stat(): HasMany
-    {
-        return $this->hasMany(StatUser::class, 'user_id', 'id');
     }
 
     public function parent(): BelongsTo

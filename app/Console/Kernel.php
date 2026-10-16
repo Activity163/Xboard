@@ -28,25 +28,11 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         Cache::put(CacheKey::get('SCHEDULE_LAST_CHECK_AT', null), time());
-        // v2board
-        $schedule->command('xboard:statistics')->dailyAt('0:10')->onOneServer();
-        // check
-        $schedule->command('check:order')->everyMinute()->onOneServer()->withoutOverlapping(5);
-        $schedule->command('check:commission')->everyMinute()->onOneServer()->withoutOverlapping(5);
-        $schedule->command('check:ticket')->everyMinute()->onOneServer()->withoutOverlapping(5);
         // reset
         $schedule->command('reset:traffic')->everyMinute()->onOneServer()->withoutOverlapping(10);
         $schedule->command('reset:log')->daily()->onOneServer();
-        // send
-        $schedule->command('send:remindMail', ['--force'])->dailyAt('11:30')->onOneServer();
-        // horizon metrics
-        $schedule->command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
         // cleanup stale online_count (GC for Redis TTL expiration)
         $schedule->command('cleanup:online-status')->everyFiveMinutes()->onOneServer();
-        // backup Timing
-        // if (env('ENABLE_AUTO_BACKUP_AND_UPDATE', false)) {
-        //     $schedule->command('backup:database', ['true'])->daily()->onOneServer();
-        // }
         app(PluginManager::class)->registerPluginSchedules($schedule);
 
     }

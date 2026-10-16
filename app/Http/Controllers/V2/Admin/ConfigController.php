@@ -5,7 +5,6 @@ namespace App\Http\Controllers\V2\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ConfigSave;
 use App\Models\SubscribeTemplate;
-use App\Services\ThemeService;
 use App\Utils\Dict;
 use Illuminate\Http\Request;
 
@@ -178,10 +177,6 @@ class ConfigController extends Controller
             if (isset($templateKeys[$k])) {
                 SubscribeTemplate::setContent($templateKeys[$k], $v);
                 continue;
-            }
-            if ($k == 'frontend_theme') {
-                $themeService = app(ThemeService::class);
-                $themeService->switch($v);
             }
             admin_setting([$k => $v]);
         }
