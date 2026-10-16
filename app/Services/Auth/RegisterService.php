@@ -4,7 +4,6 @@ namespace App\Services\Auth;
 
 use App\Exceptions\ApiException;
 use App\Models\InviteCode;
-use App\Models\Plan;
 use App\Models\User;
 use App\Services\CaptchaService;
 use App\Services\Plugin\HookManager;

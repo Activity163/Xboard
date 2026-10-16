@@ -49,10 +49,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $commission_auto_check 是否自动计算佣金
  *
  * @property-read User|null $invite_user 邀请人信息
- * @property-read \App\Models\Plan|null $plan 用户订阅计划
  * @property-read ServerGroup|null $group 权限组
  * @property-read \Illuminate\Database\Eloquent\Collection<int, InviteCode> $codes 邀请码列表
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Order> $orders 订单列表
  * @property-read \Illuminate\Database\Eloquent\Collection<int, StatUser> $stat 统计信息
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Ticket> $tickets 工单列表
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TrafficResetLog> $trafficResetLogs 流量重置记录
@@ -104,15 +102,6 @@ class User extends Authenticatable
         return $this->belongsTo(self::class, 'invite_user_id', 'id');
     }
 
-    /**
-     * 获取用户订阅计划
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-     */
-    public function plan(): BelongsTo
-    {
-        return $this->belongsTo(Plan::class, 'plan_id', 'id');
-    }
-
     public function group(): BelongsTo
     {
         return $this->belongsTo(ServerGroup::class, 'group_id', 'id');
@@ -122,11 +111,6 @@ class User extends Authenticatable
     public function codes(): HasMany
     {
         return $this->hasMany(InviteCode::class, 'user_id', 'id');
-    }
-
-    public function orders(): HasMany
-    {
-        return $this->hasMany(Order::class, 'user_id', 'id');
     }
 
     public function stat(): HasMany
@@ -159,8 +143,7 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return !$this->banned && 
-               ($this->expired_at === null || $this->expired_at > time()) &&
-               $this->plan_id !== null;
+               ($this->expired_at === null || $this->expired_at > time());
     }
 
     /** 

@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Jobs\TrafficFetchJob;
-use App\Models\Order;
-use App\Models\Plan;
 use App\Models\Server;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
@@ -101,17 +99,6 @@ class UserService
         return true;
     }
 
-    public function isNotCompleteOrderByUserId(int $userId): bool
-    {
-        $order = Order::whereIn('status', [0, 1])
-            ->where('user_id', $userId)
-            ->first();
-        if (!$order) {
-            return false;
-        }
-        return true;
-    }
-
     public function trafficFetch(Server $server, string $protocol, array $data)
     {
         $server->rate = $server->getCurrentRate();
@@ -174,13 +161,6 @@ class UserService
         // 可选字段
         $this->setOptionalFields($user, $data);
 
-        // 处理计划
-        if (isset($data['plan_id'])) {
-            $this->setPlanForUser($user, $data['plan_id'], $data['expired_at'] ?? null);
-        } else {
-            $this->setTryOutPlan(user: $user);
-        }
-
         return $user;
     }
 
@@ -206,49 +186,6 @@ class UserService
     }
 
     /**
-     * 为用户设置计划
-     */
-    private function setPlanForUser(User $user, int $planId, ?int $expiredAt = null): void
-    {
-        $plan = Plan::find($planId);
-        if (!$plan)
-            return;
-
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->speed_limit = $plan->speed_limit;
-
-        if ($expiredAt) {
-            $user->expired_at = $expiredAt;
-        }
-    }
-
-    /**
-     * 为用户分配一个新套餐或续费现有套餐
-     *
-     * @param User $user 用户模型
-     * @param Plan $plan 套餐模型
-     * @param int $validityDays 购买天数
-     * @return User 更新后的用户模型
-     */
-    public function assignPlan(User $user, Plan $plan, int $validityDays): User
-    {
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->speed_limit = $plan->speed_limit;
-        $user->device_limit = $plan->device_limit;
-
-        if ($validityDays > 0) {
-            $user = $this->extendSubscription($user, $validityDays);
-        }
-
-        $user->save();
-        return $user;
-    }
-
-    /**
      * 延长用户的订阅有效期
      *
      * @param User $user 用户模型
@@ -261,24 +198,5 @@ class UserService
         $user->expired_at = max($currentExpired, time()) + ($days * 86400);
 
         return $user;
-    }
-
-    /**
-     * 设置试用计划
-     */
-    private function setTryOutPlan(User $user): void
-    {
-        if (!(int) admin_setting('try_out_plan_id', 0))
-            return;
-
-        $plan = Plan::find(admin_setting('try_out_plan_id'));
-        if (!$plan)
-            return;
-
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->expired_at = time() + (admin_setting('try_out_hour', 1) * 3600);
-        $user->speed_limit = $plan->speed_limit;
     }
 }

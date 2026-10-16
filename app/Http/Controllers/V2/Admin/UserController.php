@@ -7,7 +7,6 @@ use App\Http\Requests\Admin\UserGenerate;
 use App\Http\Requests\Admin\UserSendMail;
 use App\Http\Requests\Admin\UserUpdate;
 use App\Jobs\SendEmailJob;
-use App\Models\Plan;
 use App\Models\User;
 use App\Services\AuthService;
 use App\Services\Plugin\HookManager;
@@ -243,14 +242,6 @@ class UserController extends Controller
             $params['password_algo'] = NULL;
         } else {
             unset($params['password']);
-        }
-        // 处理订阅计划
-        if (isset($params['plan_id'])) {
-            $plan = Plan::find($params['plan_id']);
-            if (!$plan) {
-                return $this->fail([400202, '订阅计划不存在']);
-            }
-            $params['group_id'] = $plan->group_id;
         }
         // 处理邀请用户
         if ($request->input('invite_user_email') && $inviteUser = User::byEmail($request->input('invite_user_email'))->first()) {

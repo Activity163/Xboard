@@ -2,9 +2,7 @@
 
 namespace App\Providers;
 
-use App\Models\Plan;
 use App\Models\User;
-use App\Observers\PlanObserver;
 use App\Observers\UserObserver;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
@@ -27,6 +25,5 @@ class EventServiceProvider extends ServiceProvider
         parent::boot();
 
         User::observe(UserObserver::class);
-        Plan::observe(PlanObserver::class);
     }
 }

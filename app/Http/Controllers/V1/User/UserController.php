@@ -4,11 +4,7 @@ namespace App\Http\Controllers\V1\User;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\UserChangePassword;
-use App\Http\Requests\User\UserTransfer;
 use App\Http\Requests\User\UserUpdate;
-use App\Models\Order;
-use App\Models\Plan;
-use App\Models\Ticket;
 use App\Models\User;
 use App\Services\Auth\LoginService;
 use App\Services\AuthService;
@@ -113,21 +109,6 @@ class UserController extends Controller
         return $this->success($user);
     }
 
-    public function getStat(Request $request)
-    {
-        $stat = [
-            Order::where('status', 0)
-                ->where('user_id', $request->user()->id)
-                ->count(),
-            Ticket::where('status', 0)
-                ->where('user_id', $request->user()->id)
-                ->count(),
-            User::where('invite_user_id', $request->user()->id)
-                ->count()
-        ];
-        return $this->success($stat);
-    }
-
     public function getSubscribe(Request $request)
     {
         $user = User::where('id', $request->user()->id)
@@ -147,12 +128,6 @@ class UserController extends Controller
             ->first();
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
-        }
-        if ($user->plan_id) {
-            $user['plan'] = Plan::find($user->plan_id);
-            if (!$user['plan']) {
-                return $this->fail([400, __('Subscription plan does not exist')]);
-            }
         }
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
         $userService = new UserService();
@@ -186,30 +161,6 @@ class UserController extends Controller
             return $this->fail([400, __('Save failed')]);
         }
 
-        return $this->success(true);
-    }
-
-    public function transfer(UserTransfer $request)
-    {
-        $amount = $request->input('transfer_amount');
-        try {
-            DB::transaction(function () use ($request, $amount) {
-                $user = User::lockForUpdate()->find($request->user()->id);
-                if (!$user) {
-                    throw new \Exception(__('The user does not exist'));
-                }
-                if ($amount > $user->commission_balance) {
-                    throw new \Exception(__('Insufficient commission balance'));
-                }
-                $user->commission_balance -= $amount;
-                $user->balance += $amount;
-                if (!$user->save()) {
-                    throw new \Exception(__('Transfer failed'));
-                }
-            });
-        } catch (\Exception $e) {
-            return $this->fail([400, $e->getMessage()]);
-        }
         return $this->success(true);
     }
 
