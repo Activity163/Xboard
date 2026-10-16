@@ -56,23 +56,6 @@ class ServerSave extends FormRequest
             'network_settings' => 'nullable|array',
             'rules' => 'nullable|array',
         ],
-        'trojan' => [
-            'tls' => 'nullable|integer',
-            'network' => 'required|string',
-            'network_settings' => 'nullable|array',
-            'server_name' => 'nullable|string',
-            'allow_insecure' => 'nullable|boolean',
-        ],
-        'hysteria' => [
-            'version' => 'required|integer',
-            'alpn' => 'nullable|string',
-            'obfs.open' => 'nullable|boolean',
-            'obfs.type' => 'string|nullable',
-            'obfs.password' => 'string|nullable',
-            'bandwidth.up' => 'nullable|integer',
-            'bandwidth.down' => 'nullable|integer',
-            'hop_interval' => 'integer|nullable',
-        ],
         'vless' => [
             'tls' => 'required|integer',
             'network' => 'required|string',
@@ -82,30 +65,6 @@ class ServerSave extends FormRequest
             'encryption.enabled' => 'nullable|boolean',
             'encryption.encryption' => 'nullable|string',
             'encryption.decryption' => 'nullable|string',
-        ],
-        'socks' => [
-            'tls' => 'nullable|integer',
-        ],
-        'naive' => [
-            'tls' => 'required|integer',
-        ],
-        'http' => [
-            'tls' => 'required|integer',
-        ],
-        'tuic' => [
-            'version' => 'nullable|integer',
-            'congestion_control' => 'nullable|string',
-            'alpn' => 'nullable|array',
-            'udp_relay_mode' => 'nullable|string',
-        ],
-        'mieru' => [
-            'transport' => 'required|string|in:TCP,UDP',
-            'traffic_pattern' => 'string',
-        ],
-        'anytls' => [
-            'tls' => 'nullable|array',
-            'alpn' => 'nullable|string',
-            'padding_scheme' => 'nullable|array',
         ],
     ];
 

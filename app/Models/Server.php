@@ -84,10 +84,6 @@ class Server extends Model
             'serverKeySize' => 32,
             'userKeySize' => 32,
         ],
-        '2022-blake3-chacha20-poly1305' => [
-            'serverKeySize' => 32,
-            'userKeySize' => 32,
-        ]
     ];
 
     public const TYPE_ALIASES = [
@@ -96,17 +92,9 @@ class Server extends Model
     ];
 
     public const VALID_TYPES = [
-        self::TYPE_HYSTERIA,
-        self::TYPE_VLESS,
-        self::TYPE_TROJAN,
         self::TYPE_VMESS,
-        self::TYPE_TUIC,
+        self::TYPE_VLESS,
         self::TYPE_SHADOWSOCKS,
-        self::TYPE_ANYTLS,
-        self::TYPE_SOCKS,
-        self::TYPE_NAIVE,
-        self::TYPE_HTTP,
-        self::TYPE_MIERU,
     ];
 
     protected $table = 'v2_server';
@@ -213,17 +201,6 @@ class Server extends Model
     ];
 
     private const PROTOCOL_CONFIGURATIONS = [
-        self::TYPE_TROJAN => [
-            'tls' => ['type' => 'integer', 'default' => 1],
-            'network' => ['type' => 'string', 'default' => null],
-            'network_settings' => ['type' => 'array', 'default' => null],
-            'server_name' => ['type' => 'string', 'default' => null],
-            'allow_insecure' => ['type' => 'boolean', 'default' => false],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION,
-            ...self::REALITY_CONFIGURATION,
-            ...self::MULTIPLEX_CONFIGURATION,
-            ...self::UTLS_CONFIGURATION
-        ],
         self::TYPE_VMESS => [
             'tls' => ['type' => 'integer', 'default' => 0],
             'network' => ['type' => 'string', 'default' => null],
@@ -259,67 +236,6 @@ class Server extends Model
             'plugin' => ['type' => 'string', 'default' => null],
             'plugin_opts' => ['type' => 'string', 'default' => null]
         ],
-        self::TYPE_HYSTERIA => [
-            'version' => ['type' => 'integer', 'default' => 2],
-            'bandwidth' => [
-                'type' => 'object',
-                'fields' => [
-                    'up' => ['type' => 'integer', 'default' => null],
-                    'down' => ['type' => 'integer', 'default' => null]
-                ]
-            ],
-            'obfs' => [
-                'type' => 'object',
-                'fields' => [
-                    'open' => ['type' => 'boolean', 'default' => false],
-                    'type' => ['type' => 'string', 'default' => 'salamander'],
-                    'password' => ['type' => 'string', 'default' => null]
-                ]
-            ],
-            'tls' => self::TLS_CONFIGURATION,
-            'hop_interval' => ['type' => 'integer', 'default' => null]
-        ],
-        self::TYPE_TUIC => [
-            'version' => ['type' => 'integer', 'default' => 5],
-            'congestion_control' => ['type' => 'string', 'default' => 'cubic'],
-            'alpn' => ['type' => 'array', 'default' => ['h3']],
-            'udp_relay_mode' => ['type' => 'string', 'default' => 'native'],
-            'tls' => self::TLS_CONFIGURATION
-        ],
-        self::TYPE_ANYTLS => [
-            'padding_scheme' => [
-                'type' => 'array',
-                'default' => [
-                    "stop=8",
-                    "0=30-30",
-                    "1=100-400",
-                    "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
-                    "3=9-9,500-1000",
-                    "4=500-1000",
-                    "5=500-1000",
-                    "6=500-1000",
-                    "7=500-1000"
-                ]
-            ],
-            'tls' => self::TLS_CONFIGURATION
-        ],
-        self::TYPE_SOCKS => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_NAIVE => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_HTTP => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_MIERU => [
-            'transport' => ['type' => 'string', 'default' => 'TCP'],
-            'traffic_pattern' => ['type' => 'string', 'default' => ''],
-            ...self::MULTIPLEX_CONFIGURATION,
-        ]
     ];
 
     private function castValueWithConfig($value, array $config)
