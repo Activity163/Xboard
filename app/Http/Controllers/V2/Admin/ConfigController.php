@@ -5,8 +5,6 @@ namespace App\Http\Controllers\V2\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ConfigSave;
 use App\Models\SubscribeTemplate;
-use App\Services\MailService;
-use App\Services\TelegramService;
 use App\Services\ThemeService;
 use App\Utils\Dict;
 use Illuminate\Http\Request;
@@ -15,15 +13,6 @@ class ConfigController extends Controller
 {
 
 
-    public function getEmailTemplate()
-    {
-        $path = resource_path('views/mail/');
-        $files = array_map(function ($item) use ($path) {
-            return str_replace($path, '', $item);
-        }, glob($path . '*'));
-        return $this->success($files);
-    }
-
     public function getThemeTemplate()
     {
         $path = public_path('theme/');
@@ -31,42 +20,6 @@ class ConfigController extends Controller
             return str_replace($path, '', $item);
         }, glob($path . '*'));
         return $this->success($files);
-    }
-
-    public function testSendMail(Request $request)
-    {
-        $mailLog = MailService::sendEmail([
-            'email' => $request->user()->email,
-            'subject' => 'This is xboard test email',
-            'template_name' => 'notify',
-            'template_value' => [
-                'name' => admin_setting('app_name', 'XBoard'),
-                'content' => 'This is xboard test email',
-                'url' => admin_setting('app_url')
-            ]
-        ]);
-        return response([
-            'data' => $mailLog,
-        ]);
-    }
-    public function setTelegramWebhook(Request $request)
-    {
-        $hookUrl = $this->resolveTelegramWebhookUrl();
-        if (blank($hookUrl)) {
-            return $this->fail([422, 'Telegram Webhook地址未配置']);
-        }
-        $hookUrl .= '?' . http_build_query([
-            'access_token' => md5(admin_setting('telegram_bot_token', $request->input('telegram_bot_token')))
-        ]);
-        $telegramService = new TelegramService($request->input('telegram_bot_token'));
-        $telegramService->getMe();
-        $telegramService->setWebhook(url: $hookUrl);
-        $telegramService->registerBotCommands();
-        return $this->success([
-            'success' => true,
-            'webhook_url' => $hookUrl,
-            'webhook_base_url' => $this->getTelegramWebhookBaseUrl(),
-        ]);
     }
 
     public function fetch(Request $request)
@@ -266,34 +219,5 @@ class ConfigController extends Controller
 
             default => str($content)->toString()
         };
-    }
-
-    private function getTelegramWebhookBaseUrl(): ?string
-    {
-        $customUrl = trim((string) admin_setting('telegram_webhook_url', ''));
-        if ($customUrl !== '') {
-            return rtrim($customUrl, '/');
-        }
-
-        $appUrl = trim((string) admin_setting('app_url', ''));
-        if ($appUrl !== '') {
-            return rtrim($appUrl, '/');
-        }
-
-        return null;
-    }
-
-    private function resolveTelegramWebhookUrl(): ?string
-    {
-        $baseUrl = $this->getTelegramWebhookBaseUrl();
-        if (!$baseUrl) {
-            return null;
-        }
-
-        if (str_contains($baseUrl, '/api/v1/guest/telegram/webhook')) {
-            return $baseUrl;
-        }
-
-        return $baseUrl . '/api/v1/guest/telegram/webhook';
     }
 }

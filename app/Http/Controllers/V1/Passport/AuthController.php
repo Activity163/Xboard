@@ -30,28 +30,6 @@ class AuthController extends Controller
     }
 
     /**
-     * 通过邮件链接登录
-     */
-    public function loginWithMailLink(Request $request)
-    {
-        $params = $request->validate([
-            'email' => 'required|email:strict',
-            'redirect' => 'nullable'
-        ]);
-
-        [$success, $result] = $this->mailLinkService->handleMailLink(
-            $params['email'],
-            $request->input('redirect')
-        );
-
-        if (!$success) {
-            return $this->fail($result);
-        }
-
-        return $this->success($result);
-    }
-
-    /**
      * 用户注册
      */
     public function register(AuthRegister $request)
