@@ -1,0 +1,36 @@
+# Xboard 精简版 —— 使用 GitHub CI 预构建镜像部署（不现场构建，最快）
+#
+# 与 compose.yaml 的区别：这里不执行 `build:`，直接拉取 CI 已发布的镜像。
+# 适合服务器不方便现场编译（国内网络拉 apk / composer 慢）的场景。
+#
+# 用法：
+#   git clone https://github.com/Activity163/Xboard.git && cd Xboard
+#   touch .env
+#   docker compose -f compose.image.yaml run --rm \
+#     -e ENABLE_SQLITE=true -e ENABLE_REDIS=true \
+#     -e ADMIN_ACCOUNT=admin@example.com \
+#     xboard php artisan xboard:install
+#   docker compose -f compose.image.yaml up -d
+#
+# 镜像由 .github/workflows/docker-publish.yml 在每次 push master 时自动构建，
+# 支持 amd64 / arm64。可用的 tag：latest、master、new、<短commit>。
+services:
+  xboard:
+    image: ghcr.io/activity163/xboard:latest
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+    volumes:
+      - ./.env:/www/.env
+      - ./.docker/.data/:/www/.docker/.data
+      - ./storage/logs:/www/storage/logs
+      - ./storage/theme:/www/storage/theme
+      - ./plugins:/www/plugins
+      - redis-data:/data
+    environment:
+      - RESOURCE_PROFILE=balanced      # minimal | balanced | performance | auto
+      - ENABLE_HORIZON=true
+      - docker=true
+
+volumes:
+  redis-data:

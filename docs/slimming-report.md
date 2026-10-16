@@ -59,7 +59,7 @@ git reset --hard <批次commit>      # 回退到某批次
 
 ---
 
-## 四、回归验证（Debian 12 虚拟机 10.0.0.131）
+## 四、回归验证（Debian 12 测试机）
 
 环境：PHP 8.2.34 + SQLite + Redis 7.0.15，`php artisan serve`
 
@@ -102,20 +102,30 @@ git reset --hard <批次commit>      # 回退到某批次
 
 ---
 
-## 七、虚拟机上的测试环境（可复用）
+## 七、验证方式
 
+精简后的回归验证在**独立的临时虚拟机**上完成，避免影响生产环境：
+
+- 环境：PHP 8.2 + SQLite + Redis（`php artisan serve` 单进程模式）
+- 覆盖：XrayR 三接口（config / user / push）、后台管理 API、订阅分发、定时任务
+- 重点验证项：三种协议（vmess / vless+REALITY / shadowsocks-2022）的配置下发正确性、
+  `push` 后流量落库数值一致性、已删除接口返回 404
+- 结果：全部通过，日志零错误
+
+复现验证环境：
+
+```bash
+# 任选一台干净的 Linux 机器
+composer install --no-dev
+cp .env.example .env && php artisan key:generate
+php artisan migrate --force
+php artisan xboard:install        # 或 Docker 方式，见 README
+
+php artisan serve --host=127.0.0.1 --port=8000   # 面板 + XrayR 接口
+php artisan queue:work redis --queue=traffic_fetch
 ```
-主机：aihelper-vm130（10.0.0.131）
-路径：/root/xboard
-环境：PHP 8.2.34 + SQLite(database/database.sqlite) + Redis 7.0.15
-管理后台地址：http://127.0.0.1:8000/d673bafd
-管理员：admin@test.com
-节点 token：testtoken123
-测试节点：1=vmess+ws  2=vless+reality  3=ss2022
-测试用户：u1@test.com（id=2，group_id=1）
-启动：cd /root/xboard && php artisan serve --host=127.0.0.1 --port=8000
-队列：php artisan queue:work redis --queue=traffic_fetch
-```
+
+> 具体的测试主机地址、账号与 token 不在此记录，属本地环境信息。
 
 ---
 
@@ -142,7 +152,7 @@ git reset --hard <批次commit>      # 回退到某批次
 
 **验证**：后台登录返回 `is_admin:true`；12 个后台 GET 接口全 200；XrayR 三接口 200；`reset:traffic` 正常执行；清空日志复测零错误。
 
-**入口地址**：`http://<域名>/<secure_path>`（本次测试环境为 `/d673bafd`）。
+**入口地址**：`http://<域名>/<secure_path>`。
 
 
 ---
@@ -186,7 +196,7 @@ git reset --hard <批次commit>      # 回退到某批次
 docker build                    → 成功（xboard-slim:latest，562MB / 126MB）
 容器内 xboard:install           → 成功（SQLite + 内置 Redis）
 supervisor 进程                 → octane / horizon / redis / caddy 全部 RUNNING（无 ws-server）
-后台页面 /8cec6376              → 200
+后台页面 /<secure_path>         → 200
 后台静态资源 js/css/locales     → 200
 后台 API（6 项）                → 全 200
 XrayR config/user/push          → 全 200

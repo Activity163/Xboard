@@ -28,8 +28,13 @@ cli-php.ini
 frontend
 docker-compose.yaml
 bun.lockb
-compose.yaml
+# compose.yaml 已纳入版本控制（服务器 clone 后可直接部署），不再忽略
+# compose.yaml
 compose.host.yaml
 compose.split.yaml
 .scribe
 /.workbuddy-ai
+
+# 精简版不再包含上游完整版文档（README 已覆盖部署流程）
+/docs/en
+/docs/images

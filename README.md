@@ -53,50 +53,93 @@
 
 ## 快速开始
 
-### Docker（推荐）
+部署全程在**服务器**上完成，不需要本地克隆仓库。
+
+### Docker 部署（推荐）
+
+**1. 服务器上拉取代码**
 
 ```bash
-# 0. 生成 compose 文件（仓库只提供 sample，compose.yaml 被 gitignore）
-cp compose.sample.yaml compose.yaml
+apt update && apt install -y git
+git clone https://github.com/Activity163/Xboard.git
+cd Xboard
+```
 
-# 1. 构建镜像（使用本地代码）
+**2. 构建镜像**
+
+```bash
 docker compose build
+```
 
-# 2. 首次安装（会生成 APP_KEY、导入数据库、创建管理员）
+> `compose.yaml` 已随仓库提供，无需拷贝样例文件。
+> 若构建时卡在 apk 下载并报 `DNS: transient error`，见下方「部署踩坑 1」。
+>
+> **不想现场编译**（国内拉 apk / composer 慢）可直接用 CI 预构建镜像，
+> 跳过 `build` 这一步：
+>
+> ```bash
+> docker compose -f compose.image.yaml up -d     # 安装步骤同上，把 -f 带上即可
+> ```
+>
+> 镜像地址 `ghcr.io/activity163/xboard:latest`，每次 push master 由 GitHub Actions 自动构建（amd64 / arm64）。
+
+**3. 首次安装**
+
+```bash
 rm -f .env && touch .env
 docker compose run --rm \
   -e ENABLE_SQLITE=true \
   -e ENABLE_REDIS=true \
   -e ADMIN_ACCOUNT=admin@example.com \
   xboard php artisan xboard:install
-
-# 3. 启动
-docker compose up -d
 ```
 
-安装完成后终端会打印**管理面板地址**与**管理员密码**，务必保存。
+安装程序会自动：生成 `APP_KEY` → 建库导入 → 创建管理员 → 安装默认插件。
 
-- 访问：`http://SERVER_IP:7001/<secure_path>`
-- 容器内包含：Octane（PHP 常驻）+ Horizon（队列）+ Redis + Caddy
+> ⚠️ 两点务必注意：
+> - **不要加 `-it`**。远程 SSH 无 TTY，会报 `cannot attach stdin to a TTY-enabled container`。
+> - **`.env` 必须存在且为空**。安装程序要往这个文件里写配置，Docker 方式下不能删掉它。
 
-> ⚠️ 安装命令**不要加 `-it`**（远程 SSH 无 TTY 会报 `cannot attach stdin to a TTY-enabled container`）。
-
-**三种 compose 模板**（按部署环境选）：
-
-| 文件 | 适用场景 |
-|---|---|
-| `compose.sample.yaml` | 默认，bridge 网络，宿主机 `127.0.0.1:7001` 对外 |
-| `compose.1panel.sample.yaml` | 1Panel 用户，额外接入 `1panel-network` 以访问其 MySQL/Redis |
-| `compose.host.sample.yaml` | 宿主机跑 nginx/openresty，需要 host 网络 |
-
-### 手动部署
+**4. 启动**
 
 ```bash
+docker compose up -d
+docker compose logs -f xboard      # 观察启动日志
+```
+
+终端会打印**管理面板地址**（`http://<你的IP>:7001/<secure_path>`）与**管理员密码**，请立即保存。
+
+**5. 收尾**
+
+编辑 `.env`，把 `APP_URL` 改成实际对外地址（HTTPS 域名），然后重启：
+
+```bash
+docker compose restart xboard
+```
+
+**容器内已含**：Octane（PHP 常驻）+ Horizon（队列）+ Redis + Caddy，单容器开箱可用。工作进程数会按机器 CPU / 内存自动调优（`RESOURCE_PROFILE` 控制档位）。
+
+### 其他网络模式
+
+仓库同时提供两份按环境定制的模板，直接用 `-f` 指定即可，**同样不需要拷贝成 `compose.yaml`**：
+
+| 命令 | 适用场景 |
+|---|---|
+| `docker compose up -d` | 默认。源码现场构建，bridge 网络，宿主机 `127.0.0.1:7001` 对外 |
+| `docker compose -f compose.image.yaml up -d` | 用 CI 预构建镜像，不现场编译（最快） |
+| `docker compose -f compose.host.sample.yaml up -d` | 宿主机自带 nginx/openresty，需要 host 网络 |
+| `docker compose -f compose.1panel.sample.yaml up -d` | 1Panel 用户，额外接入 `1panel-network` 以访问其 MySQL/Redis |
+
+> 用 `-f` 时如果 `.env` 在仓库根目录，Compose 仍会自动读取，无需额外参数。
+> 除 `compose.image.yaml` 外，其余模板都是 `build: .`，首次启动前需要先 `docker compose -f <文件> build`。
+
+### 手动部署（不用 Docker）
+
+```bash
+git clone https://github.com/Activity163/Xboard.git && cd Xboard
 composer install --no-dev
 cp .env.example .env
-php artisan key:generate
-# 编辑 .env 配置数据库与 Redis
-php artisan migrate --force
+# 编辑 .env 配置数据库与 Redis（APP_KEY 留空）
 php artisan xboard:install
 ```
 
@@ -189,6 +232,8 @@ app/
     ├── TrafficResetService.php  流量重置（含重置方式常量）
     └── Plugin/                  插件钩子系统
 .docker/                Dockerfile 配套（supervisor / caddy / entrypoint）
+compose.yaml            默认部署文件（服务器 clone 后可直接用）
+compose.image.yaml      用 CI 预构建镜像部署（不现场编译）
 public/assets/admin/    后台管理面板（React dist）
 docs/slimming-report.md 精简完成报告
 ```
@@ -226,21 +271,30 @@ php artisan queue:work redis --queue=traffic_fetch
 
 ## 回滚到完整版
 
-精简过程按批次提交，每步可独立回退：
+精简过程按批次提交，每步可独立回退。**提交哈希见 `git log --oneline`**（当前 HEAD 共 20 个提交）：
 
 ```bash
 git log --oneline                      # 查看批次
 git checkout <批次commit> -- <路径>     # 恢复单个文件
-git checkout f193bfd -- .              # 全量恢复到精简前
+git checkout d9ede6f -- .              # 全量恢复到精简前基线
 ```
 
 | 提交 | 内容 |
 |---|---|
-| `f193bfd` | 精简前基线快照 |
-| `63baf1d` `9763568` `4c79057` | 支付插件 / XrayR 接口层 / 流量链路 |
-| `d1a3cd1` `8e4e275` `ecaad9d` `c84b5e7` | 交易 / 运营 / 通知 / 统计与前端 |
-| `941cba5` `69341d8` `3985a40` | 路由 / 协议收窄 / 依赖收尾 |
-| `b5263bc` `7e459c0` | Docker 修复 / composer.lock |
+| `d9ede6f` | **baseline：精简前基线快照**（完整版全量代码） |
+| `1df2bdc` | 批次 1：删除 plugins-core 支付插件与 PaymentInterface |
+| `44db83d` | 批次 2：收窄 XrayR 接口层 |
+| `ad293ad` | 批次 3：核心链路解耦（流量落库路径收敛） |
+| `6aa90e3` | 批次 4a：删除交易类模块 |
+| `149bac2` | 批次 4b：删除运营类模块 |
+| `c08bda1` | 批次 4c：删除通知类模块 |
+| `7149395` | 批次 4d：删除统计 / 更新 / 备份 / 多主题 |
+| `a393c81` | 批次 4e：路由清理与收尾 |
+| `72abdc7` | 批次 5：协议收窄 11 → 3 |
+| `7fbd082` | 批次 6：依赖与配置收尾 |
+
+> ⚠️ 仓库历史曾用 `git filter-repo` 重写过（移除了 `.workbuddy-ai` 目录），
+> **重写前的旧哈希已全部失效**，请以本表与 `git log` 输出为准。
 
 ## 许可
 

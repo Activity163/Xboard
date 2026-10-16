@@ -1,0 +1,33 @@
+# Xboard 精简版 —— 默认部署文件（开箱即用，已纳入版本控制）
+#
+# 服务器上直接：
+#   git clone https://github.com/Activity163/Xboard.git && cd Xboard
+#   touch .env
+#   docker compose build && docker compose run --rm ... xboard php artisan xboard:install
+#   docker compose up -d
+#
+# 该文件由源码构建镜像（build: .），镜像内容与仓库代码完全一致。
+# 若要用 host 网络（宿主机自带 nginx/openresty）或 1Panel 网络，
+# 请改用 compose.host.sample.yaml / compose.1panel.sample.yaml：
+#   docker compose -f compose.host.sample.yaml up -d
+services:
+  xboard:
+    build: .
+    image: xboard-slim:latest
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+    volumes:
+      - ./.env:/www/.env
+      - ./.docker/.data/:/www/.docker/.data
+      - ./storage/logs:/www/storage/logs
+      - ./storage/theme:/www/storage/theme
+      - ./plugins:/www/plugins
+      - redis-data:/data
+    environment:
+      - RESOURCE_PROFILE=balanced      # minimal | balanced | performance | auto
+      - ENABLE_HORIZON=true
+      - docker=true
+
+volumes:
+  redis-data:
