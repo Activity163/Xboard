@@ -1,3 +1,8 @@
+.git
+.gitmodules
+.github
+.workbuddy-ai
+/docs
 /node_modules
 /config/v2board.php
 /public/hot

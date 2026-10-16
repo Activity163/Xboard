@@ -14,19 +14,8 @@ RUN CFLAGS="-O0" install-php-extensions pcntl && \
 
 WORKDIR /www
 
-COPY .docker /
-
-# Add build arguments
-ARG CACHEBUST=1
-ARG REPO_URL=https://github.com/cedar2025/Xboard
-ARG BRANCH_NAME=master
-
-RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHEBUST: ${CACHEBUST}" && \
-    rm -rf ./* && \
-    rm -rf .git && \
-    git config --global --add safe.directory /www && \
-    git clone --depth 1 --branch ${BRANCH_NAME} ${REPO_URL} . && \
-    git submodule update --init --recursive --force
+# 使用本地（已精简）代码构建，不再从上游 git clone
+COPY . /www
 
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
@@ -42,7 +31,6 @@ RUN composer install --no-cache --no-dev --no-security-blocking \
 ENV ENABLE_WEB=true \
     ENABLE_HORIZON=true \
     ENABLE_REDIS=true \
-    ENABLE_WS_SERVER=true \
     ENABLE_CADDY=true
 
 EXPOSE 7001

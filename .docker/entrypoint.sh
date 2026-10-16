@@ -4,32 +4,27 @@ set -e
 # Resolve the binding scheme based on whether the embedded Caddy is enabled.
 #
 # When ENABLE_CADDY=true (default), Caddy owns the public port (7001) and
-# dispatches traffic internally; Octane and ws-server bind to localhost only
-# so they cannot be reached from outside the container.
+# dispatches traffic internally; Octane binds to localhost only so it cannot
+# be reached from outside the container.
 #
-# When ENABLE_CADDY=false (e.g. an external reverse proxy or split mode),
-# Octane takes the public port directly to keep behaviour identical to the
-# pre-Caddy releases.
+# When ENABLE_CADDY=false (e.g. an external reverse proxy), Octane takes the
+# public port directly to keep behaviour identical to the pre-Caddy releases.
 if [ "${ENABLE_CADDY}" = "true" ]; then
     : "${OCTANE_HOST:=127.0.0.1}"
     : "${OCTANE_PORT:=7002}"
-    : "${WS_HOST:=127.0.0.1}"
-    : "${WS_PORT:=8076}"
     : "${CADDY_LISTEN_PORT:=7001}"
 else
     : "${OCTANE_HOST:=0.0.0.0}"
     : "${OCTANE_PORT:=7001}"
-    : "${WS_HOST:=0.0.0.0}"
-    : "${WS_PORT:=8076}"
 fi
-export OCTANE_HOST OCTANE_PORT WS_HOST WS_PORT CADDY_LISTEN_PORT
+export OCTANE_HOST OCTANE_PORT CADDY_LISTEN_PORT
 export OCTANE_INTERNAL_PORT="${OCTANE_PORT}"
 
 # ---------------------------------------------------------------------------
 # Auto-tune worker counts based on the host (CPU + memory).
 #
 # Heuristic: each PHP worker (Octane/Horizon) costs ~80 MiB. After reserving
-# ~300 MiB for the always-on processes (caddy/redis/ws-server/masters), divide
+# ~300 MiB for the always-on processes (caddy/redis/masters), divide
 # the remaining budget across roles.  Any user-set ENV wins.
 # ---------------------------------------------------------------------------
 detect_cpus() {
@@ -116,37 +111,10 @@ export OCTANE_WORKERS OCTANE_TASK_WORKERS OCTANE_MAX_REQUESTS \
 echo "[entrypoint] Auto-tune (profile=${RESOURCE_PROFILE}): cpus=${CPUS} mem=${MEM_MIB}MiB slots=${SLOTS} -> octane=${OCTANE_WORKERS} horizon(dp/biz/notif)=${HORIZON_DATA_PIPELINE_MAX}/${HORIZON_BUSINESS_MAX}/${HORIZON_NOTIFICATION_MAX} horizon_worker_mem=${HORIZON_WORKER_MEMORY_MB}MB"
 echo "[entrypoint] Horizon supervisors use balance=auto with minProcesses=1, so they scale up to the cap on demand and back down when idle."
 
-redis_reachable() {
-    local host port
-    host=$(grep -E '^REDIS_HOST=' /www/.env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-    port=$(grep -E '^REDIS_PORT=' /www/.env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-    command -v redis-cli >/dev/null 2>&1 || return 1
-    [ -n "$host" ] || return 1
-    case "$host" in
-        /*) [ -S "$host" ] && redis-cli -s "$host" ping 2>/dev/null | grep -q PONG ;;
-        *)  redis-cli -h "$host" -p "${port:-6379}" ping 2>/dev/null | grep -q PONG ;;
-    esac
-}
-
-if [ ! -s /www/.env ] || ! grep -qE '^INSTALLED=(1|true)$' /www/.env || echo " $* " | grep -q ' xboard:install '; then
-    echo "[entrypoint] Skipping xboard:update (not yet installed or running xboard:install)."
-else
-    if redis_reachable; then
-        echo "[entrypoint] Running xboard:update (redis reachable, real drivers)..."
-        php /www/artisan xboard:update --no-interaction || \
-            echo "[entrypoint] WARNING: xboard:update failed; continuing so supervisor can boot anyway." >&2
-    else
-        echo "[entrypoint] Running xboard:update (redis not yet up, using array/sync drivers)..."
-        CACHE_DRIVER=array QUEUE_CONNECTION=sync SESSION_DRIVER=array \
-            php /www/artisan xboard:update --no-interaction || \
-            echo "[entrypoint] WARNING: xboard:update failed; continuing so supervisor can boot anyway." >&2
-    fi
-fi
-
-echo "[entrypoint] Starting services (caddy=${ENABLE_CADDY} web=${ENABLE_WEB} horizon=${ENABLE_HORIZON} ws=${ENABLE_WS_SERVER})..."
+echo "[entrypoint] Starting services (caddy=${ENABLE_CADDY} web=${ENABLE_WEB} horizon=${ENABLE_HORIZON})..."
 # Drop stale Octane/WorkerMan state files so the new master does not signal
 # PIDs left over from a previous container run (causes Swoole kill EPERM).
-rm -f /www/storage/logs/octane-server-state.json /www/storage/logs/xboard-ws-server.pid 2>/dev/null || true
+rm -f /www/storage/logs/octane-server-state.json 2>/dev/null || true
 chown -R www:www /www 2>/dev/null || true
 chown redis:redis /data 2>/dev/null || true
 exec "$@"
