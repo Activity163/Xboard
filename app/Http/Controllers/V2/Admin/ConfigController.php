@@ -12,15 +12,6 @@ class ConfigController extends Controller
 {
 
 
-    public function getThemeTemplate()
-    {
-        $path = public_path('theme/');
-        $files = array_map(function ($item) use ($path) {
-            return str_replace($path, '', $item);
-        }, glob($path . '*'));
-        return $this->success($files);
-    }
-
     public function fetch(Request $request)
     {
         $key = $request->input('key');

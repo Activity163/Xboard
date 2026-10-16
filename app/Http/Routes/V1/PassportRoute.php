@@ -18,9 +18,7 @@ class PassportRoute
             $router->get('/auth/token2Login', [AuthController::class, 'token2Login']);
             $router->post('/auth/forget', [AuthController::class, 'forget']);
             $router->post('/auth/getQuickLoginUrl', [AuthController::class, 'getQuickLoginUrl']);
-            $router->post('/auth/loginWithMailLink', [AuthController::class, 'loginWithMailLink']);
             // Comm
-            $router->post('/comm/sendEmailVerify', [CommController::class, 'sendEmailVerify']);
             $router->post('/comm/pv', [CommController::class, 'pv']);
         });
     }
