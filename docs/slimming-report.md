@@ -116,3 +116,31 @@ git reset --hard <批次commit>      # 回退到某批次
 启动：cd /root/xboard && php artisan serve --host=127.0.0.1 --port=8000
 队列：php artisan queue:work redis --queue=traffic_fetch
 ```
+
+---
+
+## 八、后续追加：恢复后台管理面板（2026-10-17）
+
+用户反馈需要后台管理界面，已恢复。
+
+| 项 | Commit | 说明 |
+|---|---|---|
+| 恢复面板 | `2bab01a` | 恢复 `admin.blade.php` + 后台入口路由；拉取 `cedar2025/xboard-admin-dist`（16MB）到 `public/assets/admin`；移除 `.gitmodules`（dist 直接纳入仓库，git 压缩后 6.5MB） |
+| 修复残留 | `8510d7a` | 修复恢复后暴露的 plan 残留引用 |
+
+**恢复后暴露并修掉的问题**：
+
+1. **`user/fetch` 报 500** —— `V2AdminUserController` 仍在用 `->with('plan')` 关系（已删）。已移除 plan 预加载、CSV 导出的「订阅计划」列与 `plan_id` 入参。
+2. **`destroy` 调用已删关系** —— `orders()` / `stat()` / `tickets()` 已删，改为只清理 `codes()` 与 `trafficResetLogs()`。
+3. **⚠️ `reset:traffic` 静默失效（最隐蔽）** —— `ResetTraffic` 有 3 处 `whereNotNull('plan_id')`，Plan 删除后该字段恒为 NULL，**定时重置任务永远匹配不到用户，而且不报任何错**。已移除。
+4. `UserService::getUnAvailbaleUsers()` 条件恒真且无调用者 → 删除。
+5. `ClearUser` 的无效 `plan_id` 条件 → 移除。
+
+**后台可用范围**：节点管理 / 用户管理 / 分组 / 路由 / 系统设置 / 系统状态 / 插件 / 流量重置。
+
+**已删模块对应页面点开会 404**：订单 / 支付 / 套餐 / 优惠券 / 礼品卡 / 工单 / 知识库 / 公告 / 统计 / 主题 / 邮件模板 —— 后端 API 已不存在，前端菜单残留不影响核心功能。
+
+**验证**：后台登录返回 `is_admin:true`；12 个后台 GET 接口全 200；XrayR 三接口 200；`reset:traffic` 正常执行；清空日志复测零错误。
+
+**入口地址**：`http://<域名>/<secure_path>`（本次测试环境为 `/d673bafd`）。
+
