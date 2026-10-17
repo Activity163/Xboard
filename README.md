@@ -65,29 +65,24 @@ git clone https://github.com/Activity163/Xboard.git
 cd Xboard
 ```
 
-**2. 构建镜像**
+**2. 拉取镜像**
+
+仓库只保留**一份** `compose.image.yaml`，直接拉 GitHub Actions 预构建好的镜像
+（`ghcr.io/activity163/xboard:latest`，amd64 / arm64），**服务器不现场编译**：
 
 ```bash
-docker compose build
+docker compose -f compose.image.yaml pull
 ```
 
-> `compose.yaml` 已随仓库提供，无需拷贝样例文件。
-> 若构建时卡在 apk 下载并报 `DNS: transient error`，见下方「部署踩坑 1」。
->
-> **不想现场编译**（国内拉 apk / composer 慢）可直接用 CI 预构建镜像，
-> 跳过 `build` 这一步：
->
-> ```bash
-> docker compose -f compose.image.yaml up -d     # 安装步骤同上，把 -f 带上即可
-> ```
->
-> 镜像地址 `ghcr.io/activity163/xboard:latest`，每次 push master 由 GitHub Actions 自动构建（amd64 / arm64）。
+> 文件名不是 `compose.yaml`，所以下面每条命令都会带上 `-f compose.image.yaml`。
+> 嫌长可以 `alias dc='docker compose -f compose.image.yaml'`，之后 `dc up -d` 即可。
+> 国内拉 `ghcr.io` 慢或报 `DNS: transient error`，见下方「部署踩坑 1」。
 
 **3. 首次安装**
 
 ```bash
 rm -f .env && touch .env
-docker compose run --rm \
+docker compose -f compose.image.yaml run --rm \
   -e ENABLE_SQLITE=true \
   -e ENABLE_REDIS=true \
   -e ADMIN_ACCOUNT=admin@example.com \
@@ -103,8 +98,8 @@ docker compose run --rm \
 **4. 启动**
 
 ```bash
-docker compose up -d
-docker compose logs -f xboard      # 观察启动日志
+docker compose -f compose.image.yaml up -d
+docker compose -f compose.image.yaml logs -f xboard   # 观察启动日志
 ```
 
 终端会打印**管理面板地址**（`http://<你的IP>:7001/<secure_path>`）与**管理员密码**，请立即保存。
@@ -114,24 +109,38 @@ docker compose logs -f xboard      # 观察启动日志
 编辑 `.env`，把 `APP_URL` 改成实际对外地址（HTTPS 域名），然后重启：
 
 ```bash
-docker compose restart xboard
+docker compose -f compose.image.yaml restart xboard
 ```
 
-**容器内已含**：Octane（PHP 常驻）+ Horizon（队列）+ Redis + Caddy，单容器开箱可用。工作进程数会按机器 CPU / 内存自动调优（`RESOURCE_PROFILE` 控制档位）。
+**容器内已含**：Octane（PHP 常驻）+ Horizon（队列）+ Redis，单容器开箱可用。工作进程数会按机器 CPU / 内存自动调优（`RESOURCE_PROFILE` 控制档位）。
 
-### 其他网络模式
+### 反代：用外挂 Caddy（当前生产环境）
 
-仓库同时提供两份按环境定制的模板，直接用 `-f` 指定即可，**同样不需要拷贝成 `compose.yaml`**：
+`compose.image.yaml` 里设了 `ENABLE_CADDY=false`，镜像**不启动内置 Caddy**，
+Octane 直接绑 `0.0.0.0:7001`；再由宿主机上已有的独立 Caddy 容器反代：
 
-| 命令 | 适用场景 |
-|---|---|
-| `docker compose up -d` | 默认。源码现场构建，bridge 网络，宿主机 `127.0.0.1:7001` 对外 |
-| `docker compose -f compose.image.yaml up -d` | 用 CI 预构建镜像，不现场编译（最快） |
-| `docker compose -f compose.host.sample.yaml up -d` | 宿主机自带 nginx/openresty，需要 host 网络 |
-| `docker compose -f compose.1panel.sample.yaml up -d` | 1Panel 用户，额外接入 `1panel-network` 以访问其 MySQL/Redis |
+```
+浏览器 → nezha-caddy（nezha-dashboard_default 网络）→ xboard:7001
+```
 
-> 用 `-f` 时如果 `.env` 在仓库根目录，Compose 仍会自动读取，无需额外参数。
-> 除 `compose.image.yaml` 外，其余模板都是 `build: .`，首次启动前需要先 `docker compose -f <文件> build`。
+Caddyfile 里对应的一节：
+
+```caddyfile
+xboard.你的域名 {
+	encode zstd gzip
+	reverse_proxy xboard:7001 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+```
+
+> 关键在于两个容器**在同一 Docker 网络**里，Caddy 才能用容器名 `xboard` 解析到 IP。
+> `compose.image.yaml` 的 `networks` 段就是干这个的，`external: true` 表示复用既有网络而非新建。
+
+**想改回镜像内置 Caddy**：删掉 `networks` 整段、把 `ENABLE_CADDY` 改成 `true`。
+此时 Caddy 接管 7001，Octane 自动退到 `127.0.0.1:7002`，宿主机只管把域名指过来。
+
 
 ### 手动部署（不用 Docker）
 
@@ -147,15 +156,18 @@ php artisan xboard:install
 
 实测中遇到的几个坑，按这个顺序排查：
 
-**1. Docker 构建报 `DNS: transient error`**
+**1. `docker compose pull` 卡住或报 `DNS: transient error`**
 
-容器 DNS 不通。写 `/etc/docker/daemon.json`：
+容器 DNS 不通（拉 `ghcr.io` 时最明显）。写 `/etc/docker/daemon.json`：
 
 ```json
 { "dns": ["223.5.5.5", "119.29.29.29", "8.8.8.8"] }
 ```
 
-然后 `systemctl restart docker`。
+然后 `systemctl restart docker`。若宿主机 DNS 走透明代理（返回 198.18.x.x），同样需要这项。
+
+> 若始终拉不下来，可以把镜像 `docker save` 到本地再 `docker load`，
+> 或者临时把 `image:` 换成任意可达的镜像仓库地址。
 
 **2. `xboard:install` 跑完没输出、`.env` 还是空的**
 
@@ -232,8 +244,7 @@ app/
     ├── TrafficResetService.php  流量重置（含重置方式常量）
     └── Plugin/                  插件钩子系统
 .docker/                Dockerfile 配套（supervisor / caddy / entrypoint）
-compose.yaml            默认部署文件（服务器 clone 后可直接用）
-compose.image.yaml      用 CI 预构建镜像部署（不现场编译）
+compose.image.yaml      唯一的部署文件（CI 预构建镜像 + 外挂 Caddy）
 public/assets/admin/    后台管理面板（React dist）
 docs/slimming-report.md 精简完成报告
 ```

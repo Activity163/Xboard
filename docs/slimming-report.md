@@ -170,6 +170,10 @@ php artisan queue:work redis --queue=traffic_fetch
 
 > 如果没发现这个问题，用户 `docker compose up -d` 拉起来的会是**几百 MB 的原版全功能面板**，跟精简工作毫无关系。
 
+> **后来演进**：为了让服务器免编译，镜像改由 GitHub Actions 构建并推到
+> `ghcr.io/activity163/xboard:latest`，compose 里的 `build: .` 也就不再需要。
+> 最终只保留一份 `compose.image.yaml`（详见 9.6）。
+
 ### 9.2 已删模块的容器引用（会报错或空转）
 
 | 位置 | 问题 | 修复 |
@@ -230,18 +234,29 @@ push 后流量落库                 → u=4096 d=8192（与推送值一致，Ho
 
 ### 9.6 镜像构建与启动
 
+> **2026-10-18 更新**：compose 文件已收敛为**一份** `compose.image.yaml`
+> （`compose.yaml` / `compose.sample.yaml` / `compose.host.sample.yaml` /
+> `compose.1panel.sample.yaml` 全部删除）。镜像改由 GitHub Actions 预构建，
+> 服务器只拉不编译，因此下面的 `build` 步骤已不再需要。
+
 ```bash
-# 构建（使用本地精简代码 + 锁定依赖）
-docker compose build
+# 拉取 CI 预构建镜像（不在服务器编译）
+docker compose -f compose.image.yaml pull
 
 # 首次安装
 rm -f .env && touch .env
-docker compose run --rm -e ENABLE_SQLITE=true -e ENABLE_REDIS=true \
+docker compose -f compose.image.yaml run --rm \
+  -e ENABLE_SQLITE=true -e ENABLE_REDIS=true \
   -e ADMIN_ACCOUNT=admin@example.com xboard php artisan xboard:install
 
 # 启动
-docker compose up -d
+docker compose -f compose.image.yaml up -d
 
 # 查看状态
-docker compose ps && docker compose logs -f
+docker compose -f compose.image.yaml ps
+docker compose -f compose.image.yaml logs -f xboard
 ```
+
+> 生产环境用**外挂 Caddy**（独立容器）反代，`compose.image.yaml` 里已设
+> `ENABLE_CADDY=false` 并接入 `nezha-dashboard_default` external 网络。
+

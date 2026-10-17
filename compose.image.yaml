@@ -1,9 +1,9 @@
-# Xboard 精简版 —— 使用 GitHub CI 预构建镜像部署（不现场构建，最快）
+# Xboard 精简版 —— 唯一的部署文件（个人自用）
 #
-# 与 compose.yaml 的区别：这里不执行 `build:`，直接拉取 CI 已发布的镜像。
-# 适合服务器不方便现场编译（国内网络拉 apk / composer 慢）的场景。
+# 直接用 GitHub Actions 预构建好的镜像，服务器不现场编译。
+# 镜像：ghcr.io/activity163/xboard:latest（每次 push master 自动构建，amd64 / arm64）
 #
-# 用法：
+# ── 部署 ────────────────────────────────────────────────────────────────
 #   git clone https://github.com/Activity163/Xboard.git && cd Xboard
 #   touch .env
 #   docker compose -f compose.image.yaml run --rm \
@@ -12,37 +12,44 @@
 #     xboard php artisan xboard:install
 #   docker compose -f compose.image.yaml up -d
 #
-# 镜像由 .github/workflows/docker-publish.yml 在每次 push master 时自动构建，
-# 支持 amd64 / arm64。可用的 tag：latest、master、new、<短commit>。
+#   注意：文件名不是 compose.yaml，所以每条命令都要带 -f compose.image.yaml，
+#   或者直接 `alias dc='docker compose -f compose.image.yaml'`。
+#
+# ── 反代架构 ────────────────────────────────────────────────────────────
+#   本机**不用镜像内置的 Caddy**，由宿主机上已存在的独立 Caddy 容器反代：
+#     nezha-caddy ──(nezha-dashboard_default 网络，容器名 xboard:7001)──> xboard
+#   所以：
+#     · ENABLE_CADDY=false  → Octane 直接绑 0.0.0.0:7001（少一跳，省内存）
+#     · networks 接入外层 Caddy 所在的 external 网络，靠容器名做 DNS
+#   若哪天想改回镜像内置 Caddy：删掉 networks 段 + 把 ENABLE_CADDY 改成 true，
+#   此时 Caddy 占 7001，Octane 自动退到 127.0.0.1:7002。
 services:
   xboard:
     image: ghcr.io/activity163/xboard:latest
-    # 固定容器名，让外挂的 Docker Caddy 可用 xboard:7001 反代
     container_name: xboard
     restart: unless-stopped
     ports:
       - "7001:7001"
+    networks:
+      - nezha-dashboard_default
     volumes:
+      # 只有这些是"宿主机数据"，PHP 代码与前端 dist 在镜像里
       - ./.env:/www/.env
       - ./.docker/.data/:/www/.docker/.data
       - ./storage/logs:/www/storage/logs
       - ./storage/theme:/www/storage/theme
       - ./plugins:/www/plugins
       - redis-data:/data
-    # 外挂 Docker Caddy 反代：打开 networks 段，name 填外层 Caddy 所在网络
-    # （docker network ls 查看，用 external 复用既有网络，两容器互访）。
-    # 同时打开下方 ENABLE_CADDY=false，让 Octane 直接绑 7001。
-    # networks:
-    #   - caddy-net
     environment:
       - RESOURCE_PROFILE=balanced      # minimal | balanced | performance | auto
       - ENABLE_HORIZON=true
-      # - ENABLE_CADDY=false           # 外挂 Caddy 反代时打开，少一跳代理
+      - ENABLE_CADDY=false             # 用外挂 Caddy，Octane 直接绑 7001
       - docker=true
 
-# networks:
-#   caddy-net:
-#     external: true
+networks:
+  # docker network ls 里已存在的网络，标记 external 让 compose 复用而不是新建
+  nezha-dashboard_default:
+    external: true
 
 volumes:
   redis-data:
