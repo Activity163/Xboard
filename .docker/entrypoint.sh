@@ -79,37 +79,36 @@ clamp() { v=$1; lo=$2; hi=$3; [ "$v" -lt "$lo" ] && v=$lo; [ "$v" -gt "$hi" ] &&
 
 if [ "$OCT_FORCE" = "1" ]; then
     auto_octane=1
-    auto_dp=1; auto_biz=1; auto_notif=1
+    auto_horizon=1
 else
     auto_octane=$(clamp $(( (SLOTS * OCT_NUM) / OCT_DEN )) 1 "$CPUS")
-    remaining=$(( SLOTS - auto_octane - 2 ))
-    [ "$remaining" -lt 3 ] && remaining=3
-    auto_dp=$(clamp $(( remaining / 2 )) 1 $(( CPUS * 2 )))
-    auto_biz=$(clamp $(( remaining / 4 )) 1 "$CPUS")
-    auto_notif=$(clamp $(( remaining / 4 )) 1 "$CPUS")
+    # 精简版只有一个队列（traffic_fetch），不需要按业务分池，
+    # 剩余预算给 1-2 个消费进程就够，再多也是空跑占内存。
+    auto_horizon=$(clamp $(( SLOTS - auto_octane )) 1 2)
 fi
 
 # User-set ENV always wins.
 : "${OCTANE_WORKERS:=$auto_octane}"
-: "${OCTANE_TASK_WORKERS:=1}"
+# 0 = 不启用 Swoole task worker。本项目没有使用 Octane::concurrently()，
+# Octane::tick() 的定时器跑在普通 worker 里，不依赖 task worker。
+# 留 1 个等于白占 ~49 MiB；万一以后要用并发任务，设 OCTANE_TASK_WORKERS=1 即可。
+: "${OCTANE_TASK_WORKERS:=0}"
 : "${OCTANE_MAX_REQUESTS:=500}"
 : "${OCTANE_GARBAGE_MB:=$auto_octane_gc}"
 : "${OCTANE_MAX_EXECUTION_TIME:=60}"
-: "${HORIZON_DATA_PIPELINE_MAX:=$auto_dp}"
-: "${HORIZON_BUSINESS_MAX:=$auto_biz}"
-: "${HORIZON_NOTIFICATION_MAX:=$auto_notif}"
+: "${HORIZON_MAX_PROCESSES:=$auto_horizon}"
 : "${HORIZON_WORKER_MEMORY_MB:=$auto_horizon_mem}"
 : "${HORIZON_WORKER_MAX_TIME:=0}"
 : "${HORIZON_WORKER_MAX_JOBS:=0}"
 
 export OCTANE_WORKERS OCTANE_TASK_WORKERS OCTANE_MAX_REQUESTS \
        OCTANE_GARBAGE_MB OCTANE_MAX_EXECUTION_TIME \
-       HORIZON_DATA_PIPELINE_MAX HORIZON_BUSINESS_MAX HORIZON_NOTIFICATION_MAX \
+       HORIZON_MAX_PROCESSES \
        HORIZON_WORKER_MEMORY_MB HORIZON_WORKER_MAX_TIME HORIZON_WORKER_MAX_JOBS \
        RESOURCE_PROFILE
 
-echo "[entrypoint] Auto-tune (profile=${RESOURCE_PROFILE}): cpus=${CPUS} mem=${MEM_MIB}MiB slots=${SLOTS} -> octane=${OCTANE_WORKERS} horizon(dp/biz/notif)=${HORIZON_DATA_PIPELINE_MAX}/${HORIZON_BUSINESS_MAX}/${HORIZON_NOTIFICATION_MAX} horizon_worker_mem=${HORIZON_WORKER_MEMORY_MB}MB"
-echo "[entrypoint] Horizon supervisors use balance=auto with minProcesses=1, so they scale up to the cap on demand and back down when idle."
+echo "[entrypoint] Auto-tune (profile=${RESOURCE_PROFILE}): cpus=${CPUS} mem=${MEM_MIB}MiB slots=${SLOTS} -> octane=${OCTANE_WORKERS} horizon=${HORIZON_MAX_PROCESSES} horizon_worker_mem=${HORIZON_WORKER_MEMORY_MB}MB"
+echo "[entrypoint] Horizon runs a single supervisor (queues: traffic_fetch, default); it scales 1..${HORIZON_MAX_PROCESSES} on demand."
 
 echo "[entrypoint] Starting services (caddy=${ENABLE_CADDY} web=${ENABLE_WEB} horizon=${ENABLE_HORIZON})..."
 # Drop stale Octane/WorkerMan state files so the new master does not signal

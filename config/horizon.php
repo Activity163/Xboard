@@ -168,69 +168,55 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Supervisor 定义
+    |--------------------------------------------------------------------------
+    |
+    | 精简版只需要一个队列消费者。
+    |
+    | 全项目唯一的 Job 是 App\Jobs\TrafficFetchJob，由 UserService 投递到
+    | traffic_fetch 队列。被删掉的订单 / 邮件 / Telegram / 统计模块对应的
+    | order_handle、send_email、send_email_mass、send_telegram、node_sync、
+    | stat、user_alive_sync 七个队列在代码里 0 引用 —— 监听它们等于白养
+    | 3 个 supervisor + 7 个 worker（实测约 430 MiB 常驻内存）。
+    |
+    | 'defaults' => [] 是必需的：Horizon 用 mergeConfigFrom() 把包自带的
+    | config/horizon.php 浅合并进来，只合并顶层键；这里不显式覆盖，
+    | 包默认的 supervisor-1（queue=default）就会一直存在，多养一套进程。
+    |
+    */
+
+    'defaults' => [],
+
     'environments' => [
         'production' => [
-            'data-pipeline' => [
+            'worker' => [
                 'connection' => 'redis',
-                'queue' => ['traffic_fetch', 'stat', 'user_alive_sync'],
+                // default 保底接住框架内部的通用任务，正常不会有流量
+                'queue' => ['traffic_fetch', 'default'],
                 'balance' => 'auto',
                 'autoScalingStrategy' => 'time',
                 'minProcesses' => 1,
-                'maxProcesses' => (int) env('HORIZON_DATA_PIPELINE_MAX', 8),
+                'maxProcesses' => (int) env('HORIZON_MAX_PROCESSES', 2),
                 'memory' => (int) env('HORIZON_WORKER_MEMORY_MB', 128),
-                'maxTime' => (int) env('HORIZON_WORKER_MAX_TIME', 3600),
-                'maxJobs' => (int) env('HORIZON_WORKER_MAX_JOBS', 1000),
+                'maxTime' => (int) env('HORIZON_WORKER_MAX_TIME', 0),
+                'maxJobs' => (int) env('HORIZON_WORKER_MAX_JOBS', 0),
                 'balanceCooldown' => 1,
                 'tries' => 3,
                 'timeout' => 30,
             ],
-            'business' => [
-                'connection' => 'redis',
-                'queue' => ['default', 'order_handle'],
-                'balance' => 'simple',
-                'minProcesses' => 1,
-                'maxProcesses' => (int) env('HORIZON_BUSINESS_MAX', 3),
-                'memory' => (int) env('HORIZON_WORKER_MEMORY_MB', 128),
-                'maxTime' => (int) env('HORIZON_WORKER_MAX_TIME', 3600),
-                'maxJobs' => (int) env('HORIZON_WORKER_MAX_JOBS', 1000),
-                'tries' => 3,
-                'timeout' => 30,
-            ],
-            'notification' => [
-                'connection' => 'redis',
-                'queue' => ['send_email', 'send_telegram', 'send_email_mass', 'node_sync'],
-                'balance' => 'auto',
-                'autoScalingStrategy' => 'size',
-                'minProcesses' => 1,
-                'maxProcesses' => (int) env('HORIZON_NOTIFICATION_MAX', 3),
-                'memory' => (int) env('HORIZON_WORKER_MEMORY_MB', 128),
-                'maxTime' => (int) env('HORIZON_WORKER_MAX_TIME', 3600),
-                'maxJobs' => (int) env('HORIZON_WORKER_MAX_JOBS', 1000),
-                'tries' => 3,
-                'timeout' => 60,
-                'backoff' => [3, 10, 30],
-            ],
         ],
         'local' => [
-            'Xboard' => [
+            'worker' => [
                 'connection' => 'redis',
-                'queue' => [
-                    'default',
-                    'order_handle',
-                    'traffic_fetch',
-                    'stat',
-                    'send_email',
-                    'send_email_mass',
-                    'send_telegram',
-                    'user_alive_sync',
-                    'node_sync'
-                ],
+                'queue' => ['traffic_fetch', 'default'],
                 'balance' => 'auto',
                 'minProcesses' => 1,
-                'maxProcesses' => 5,
+                'maxProcesses' => 2,
                 'tries' => 1,
-                'timeout' => 60,
-                'balanceCooldown' => 3,
+                'timeout' => 30,
+                'balanceCooldown' => 1,
             ],
         ],
     ],
