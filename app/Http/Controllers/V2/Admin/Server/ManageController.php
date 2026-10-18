@@ -67,6 +67,16 @@ class ManageController extends Controller
         }
 
         try {
+            // 新建节点默认加入全部权限组（即全部订阅），
+            // 否则节点建完对任何用户都不可见，XrayR 拉不到用户。
+            // 只在创建时兜底；编辑时若手动清空则尊重用户选择。
+            if (empty($params['group_ids'])) {
+                $params['group_ids'] = ServerGroup::query()
+                    ->orderBy('id')
+                    ->pluck('id')
+                    ->map(static fn ($id) => (string) $id)
+                    ->all();
+            }
             Server::create($params);
             return $this->success(true);
         } catch (\Exception $e) {

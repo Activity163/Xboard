@@ -170,9 +170,20 @@ class XboardInstall extends Command
             Artisan::call("migrate", ['--force' => true]);
             $this->info(Artisan::output());
             $this->info('数据库导入完成');
+            $this->info('正在创建默认订阅...');
+            $defaultPlanId = self::registerDefaultPlan();
+            $this->info('默认订阅创建完成');
             $this->info('开始注册管理员账号');
             if (!self::registerAdmin($email, $password)) {
                 abort(500, '管理员账号注册失败，请重试');
+            }
+            if ($defaultPlanId) {
+                $admin = User::where('email', $email)->first();
+                if ($admin) {
+                    $admin->plan_id = $defaultPlanId;
+                    // UserObserver 会把套餐的 group_id / transfer_enable / expired_at 落实下去
+                    $admin->save();
+                }
             }
             $this->info('正在安装默认插件...');
             PluginManager::installDefaultPlugins();
@@ -194,6 +205,49 @@ class XboardInstall extends Command
         } catch (\Exception $e) {
             $this->error($e);
         }
+    }
+
+    /**
+     * 创建默认订阅（套餐）。
+     *
+     * 精简版删掉了订阅管理 UI，但用户必须挂一个套餐才能拿到 group_id /
+     * transfer_enable，否则永远不会被下发到节点。所以安装时给一条兜底套餐。
+     * 幂等：v2_plan 已有记录时直接返回第一条的 id。
+     */
+    public static function registerDefaultPlan(): ?int
+    {
+        if (DB::table('v2_plan')->exists()) {
+            return (int) DB::table('v2_plan')->orderBy('id')->value('id');
+        }
+
+        $groupId = DB::table('v2_server_group')->orderBy('id')->value('id');
+        if (!$groupId) {
+            $groupId = DB::table('v2_server_group')->insertGetId([
+                'name' => '默认分组',
+                'created_at' => time(),
+                'updated_at' => time(),
+            ]);
+        }
+
+        return (int) DB::table('v2_plan')->insertGetId([
+            'name' => '章鱼哥专属',
+            'group_id' => $groupId,
+            // 100 TB（1024 进制）= 109951162777600 字节
+            'transfer_enable' => 100 * 1024 * 1024 * 1024 * 1024,
+            'speed_limit' => null,
+            'device_limit' => null,
+            'show' => 0,
+            'sell' => 0,
+            'sort' => 1,
+            'renew' => 1,
+            'content' => null,
+            'reset_traffic_method' => 2, // 2 = 不重置
+            'capacity_limit' => 0,
+            'prices' => json_encode([]),
+            'tags' => json_encode([]),
+            'created_at' => time(),
+            'updated_at' => time(),
+        ]);
     }
 
     public static function registerAdmin($email, $password)

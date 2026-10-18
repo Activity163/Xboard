@@ -2,6 +2,7 @@
 namespace App\Http\Routes\V2;
 
 use App\Http\Controllers\V2\Admin\ConfigController;
+use App\Http\Controllers\V2\Admin\PlanController;
 use App\Http\Controllers\V2\Admin\PluginController;
 use App\Http\Controllers\V2\Admin\Server\GroupController;
 use App\Http\Controllers\V2\Admin\Server\RouteController;
@@ -27,6 +28,11 @@ class AdminRoute
                 $router->get('/fetch', [ConfigController::class, 'fetch']);
                 $router->post('/save', [ConfigController::class, 'save']);
             });
+
+            // Plan（订阅）—— 只读。用户编辑 / 生成用户弹窗的「订阅」下拉需要它
+            // 注意：必须定义在文件末尾 StubController 的 plan/{action} 降级路由之前，
+            // Laravel 按注册顺序匹配，先注册的具体路由优先。
+            $router->get('plan/fetch', [PlanController::class, 'fetch']);
 
             // Server
             $router->group([

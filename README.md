@@ -39,7 +39,7 @@
 
 | 类别 | 移除内容 |
 |---|---|
-| 交易 | 订单 / 支付 / 套餐 / 优惠券 / 礼品卡 / 邀请返佣 |
+| 交易 | 订单 / 支付 / 优惠券 / 礼品卡 / 邀请返佣（**套餐只保留只读模板**，见「订阅分配」） |
 | 运营 | 工单 / 知识库 / 公告 |
 | 通知 | 邮件（含邮箱验证、邮件链接登录）/ Telegram 机器人 |
 | 统计 | 收入统计 / 用户流量日志 / 节点负载历史 |
@@ -236,7 +236,7 @@ app/
 │   │   ├── V2/Admin/   后台管理 API
 │   │   └── V1/Passport/ 登录注册
 │   └── Routes/         V1 / V2 路由定义
-├── Models/             User / Server / ServerGroup / ServerRoute / TrafficResetLog
+├── Models/             User / Plan / Server / ServerGroup / ServerRoute / TrafficResetLog
 ├── Protocols/          订阅格式渲染（固定层，未做精简）
 └── Services/
     ├── ServerService.php        节点配置与用户下发
@@ -286,6 +286,61 @@ python strip_admin_ui.py --apply    # 执行（自动备份 .bak-menu-removal）
 **为什么菜单删了还需要兜底**：节点管理页（保留）会以 60 秒间隔轮询
 `/server/machine/fetch` 来填充「所属服务器」下拉框。若该接口 404，后台会持续弹
 「The route xxx could not be found」。因此 stub 是必需的安全网，不能一起删掉。
+
+## 订阅分配
+
+订阅管理页已经删了，但「给用户分配订阅」这个动作保留了下来 —— 因为它是**用户能连上节点的唯一途径**。
+
+### 原理：`plan_id` 只是个入口，真正生效的是这三个字段
+
+XrayR 拉取用户时只看 `ServerService::getAvailableUsers()` 的四条条件：
+
+```php
+whereIn('group_id', $node->group_ids)   // 权限组要包含该节点
+whereRaw('u + d < transfer_enable')      // 没跑超流量
+where(expired_at >= now() OR expired_at IS NULL)  // 没过期
+where('banned', 0)
+```
+
+`plan_id` **完全不参与**。套餐（`v2_plan`）的作用只是提供一组默认值，
+分配时被抄到用户行上：
+
+| 套餐字段 | 落到用户字段 |
+|---|---|
+| `group_id` | `v2_user.group_id` |
+| `transfer_enable` | `v2_user.transfer_enable` |
+| `speed_limit` / `device_limit` | 同名字段 |
+| （套餐不设到期时间） | `v2_user.expired_at = NULL`（永久） |
+
+这段逻辑在 `app/Observers/UserObserver.php` 的 `applyPlan()` 里，
+`plan_id` 变更时自动触发，admin / staff / 生成用户三条路径都覆盖。
+
+> ⚠️ `expired_at = 0` 和 `NULL` 不是一回事：`NULL` 是永久有效，`0` 会被判定为**已过期**，
+> 用户永远不会被下发到节点。分配套餐会自动清成 `NULL`。
+
+### 怎么用
+
+后台 **用户管理 → 编辑用户 → 订阅** 下拉选择套餐并保存即可。
+「订阅」下拉的选项来自 `GET plan/fetch`（`app/Http/Controllers/V2/Admin/PlanController.php`，只读）。
+
+### 默认套餐
+
+`php artisan xboard:install` 会幂等创建一条默认订阅，并分配给管理员：
+
+| 字段 | 值 |
+|---|---|
+| 名称 | 章鱼哥专属 |
+| 流量 | 100 TB（`109951162777600` 字节） |
+| 权限组 | 库里第一个权限组（没有则创建「默认分组」） |
+| 重置方式 | `2` 不重置 |
+| 到期时间 | 无（永久） |
+
+想加别的套餐直接往 `v2_plan` 插行即可，字段参考 `app/Models/Plan.php` 的注释。
+
+### 新建节点自动进订阅
+
+`Server\ManageController@save` 在**创建**节点时，若 `group_ids` 为空会自动填入**全部现有权限组**，
+避免新节点建完对谁都不可见。编辑时若手动清空则尊重你的选择。
 
 ## 定时任务
 
