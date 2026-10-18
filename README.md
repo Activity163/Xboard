@@ -123,7 +123,7 @@ docker compose -f compose.image.yaml logs -f xboard   # 观察启动日志
 docker compose -f compose.image.yaml restart xboard
 ```
 
-**容器内已含**：Octane（PHP 常驻）+ Horizon（队列）+ Redis，单容器开箱可用。工作进程数会按机器 CPU / 内存自动调优（`RESOURCE_PROFILE` 控制档位）。
+**容器内已含**：Octane（PHP 常驻）+ Horizon（队列）+ Redis + Scheduler（定时任务），单容器开箱可用。工作进程数会按机器 CPU / 内存自动调优（`RESOURCE_PROFILE` 控制档位）。
 
 ### 反代：用外挂 Caddy（当前生产环境）
 
@@ -355,7 +355,8 @@ where('banned', 0)
 
 ## 定时任务
 
-需要常驻 `schedule:run`（Docker 镜像里 Octane 的 tick 已接管）：
+Docker 镜像内由 supervisord 的 **`scheduler` 进程**常驻跑 `php artisan schedule:work`，
+不需要额外配 cron（非 Docker 部署则需自己加 crontab 或常驻 `schedule:work`）。
 
 | 任务 | 频率 | 作用 |
 |---|---|---|
