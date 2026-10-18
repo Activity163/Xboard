@@ -89,10 +89,10 @@ fi
 
 # User-set ENV always wins.
 : "${OCTANE_WORKERS:=$auto_octane}"
-# 0 = 不启用 Swoole task worker。本项目没有使用 Octane::concurrently()，
-# Octane::tick() 的定时器跑在普通 worker 里，不依赖 task worker。
-# 留 1 个等于白占 ~49 MiB；万一以后要用并发任务，设 OCTANE_TASK_WORKERS=1 即可。
-: "${OCTANE_TASK_WORKERS:=0}"
+# 必须 >= 1。别想着设 0 来省内存 —— 实测 Swoole 6.3.0RC1 把 0 当成
+# "未设置"，会退化成 task_worker_num = worker_num（2 核就是 2 个 task worker，
+# 反而比设 1 多占 ~64 MiB）。设 1 才是真的只起 1 个。
+: "${OCTANE_TASK_WORKERS:=1}"
 : "${OCTANE_MAX_REQUESTS:=500}"
 : "${OCTANE_GARBAGE_MB:=$auto_octane_gc}"
 : "${OCTANE_MAX_EXECUTION_TIME:=60}"
