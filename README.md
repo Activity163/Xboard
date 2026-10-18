@@ -116,13 +116,18 @@ docker compose -f compose.image.yaml up -d
 docker compose -f compose.image.yaml logs -f xboard
 ```
 
-看到这四行说明起来了：
+看到这三行说明起来了：
 
 ```
 octane_00   entered RUNNING state
 horizon_00  entered RUNNING state
 redis_00    entered RUNNING state
-scheduler_00 entered RUNNING state
+```
+
+同时会打印一行自动调优结果，可用来确认进程数：
+
+```
+[entrypoint] Auto-tune (profile=balanced): cpus=2 mem=1024MiB slots=9 -> octane=2 horizon=2 horizon_worker_mem=256MB
 ```
 
 ### 4. 配置对外地址
@@ -367,26 +372,48 @@ python strip_admin_ui.py --apply    # 执行，自动备份 .bak-menu-removal
 
 ## 运行时
 
-### 四个常驻进程
+### 三个常驻进程
 
 由 supervisord 管理（`.docker/supervisor/supervisord.conf`），缺一不可：
 
 | 进程 | 作用 | 关掉会怎样 |
 |---|---|---|
-| `octane:start` | HTTP 服务（PHP 常驻） | 站点 502 |
-| `horizon` | 队列消费（流量落库、统计） | 流量不上报，用户流量永远 0 |
+| `octane:start` | HTTP 服务（PHP 常驻）+ 定时任务调度 | 站点 502，调度也停 |
+| `horizon` | 队列消费（流量落库） | 流量不上报，用户流量永远 0 |
 | `redis-server` | 缓存 + 队列 backend | 全局报错 |
-| `schedule:work` | 定时任务 | 流量重置、日志清理全部不执行 |
 
 检查：
 
 ```bash
-docker exec xboard ps -o args | grep -oE 'octane:start|horizon|schedule:work|redis-server' | sort -u
+docker exec xboard ps -o args | grep -oE 'octane:start|horizon|redis-server' | sort -u
 ```
 
 > `ps` 是 BusyBox 版，**不支持** `aux --sort`，只能用 `ps -o args`。
 
+启动后内存占用约 **350–400 MiB**（2 核 / 2 GB 机器，`RESOURCE_PROFILE=balanced`）。
+
 ### 定时任务
+
+**由 Octane 的 tick 驱动，不要再挂 `schedule:work` 或配 cron。**
+
+`app/Providers/OctaneServiceProvider.php` 里注册了一个 30 秒的 Swoole 定时器：
+
+```php
+Octane::tick('scheduler', function () {
+    $lock = Cache::lock('scheduler-lock', 30);
+    if ($lock->get()) {
+        try { Artisan::call('schedule:run'); } finally { $lock->release(); }
+    }
+})->seconds(30);
+```
+
+所以定时任务是**进程内**跑的，`ps` 里看不到独立的调度进程 —— 别据此判断它没工作。
+真要验证，抓 Redis 命令流看有没有拿锁：
+
+```bash
+timeout 36 docker exec xboard redis-cli -s /data/redis.sock MONITOR 2>&1 \
+  | grep -i 'scheduler-lock' | head
+```
 
 | 任务 | 频率 | 作用 |
 |---|---|---|
@@ -398,7 +425,9 @@ docker exec xboard ps -o args | grep -oE 'octane:start|horizon|schedule:work|red
 docker exec xboard php /www/artisan schedule:list
 ```
 
-非 Docker 部署需要自己配 cron 或常驻 `php artisan schedule:work`。
+> 三条任务都带 `onOneServer()` + `withoutOverlapping()`，多个 Octane worker
+> 同时触发也只会执行一次（走 Redis 锁）。
+> 非 Docker 部署没有 Octane 时，才需要自己配 cron 或 `php artisan schedule:work`。
 
 ### 改代码后怎么生效
 
