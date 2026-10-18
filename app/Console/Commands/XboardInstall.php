@@ -170,6 +170,9 @@ class XboardInstall extends Command
             Artisan::call("migrate", ['--force' => true]);
             $this->info(Artisan::output());
             $this->info('数据库导入完成');
+            $this->info('正在初始化系统设置...');
+            self::initDefaultSettings();
+            $this->info('系统设置初始化完成');
             $this->info('正在创建默认订阅...');
             $defaultPlanId = self::registerDefaultPlan();
             $this->info('默认订阅创建完成');
@@ -206,6 +209,46 @@ class XboardInstall extends Command
             Artisan::call('config:clear');
         } catch (\Exception $e) {
             $this->error($e);
+        }
+    }
+
+    /**
+     * 初始化关键系统设置。
+     *
+     * 全新安装后 v2_settings 是空表，而 XrayR 的鉴权中间件
+     * （app/Http/Middleware/Server.php）是这么比的：
+     *
+     *     if ($value !== admin_setting('server_token')) { $fail(...); }
+     *
+     * 设置表为空时 admin_setting 返回 null，任何 token 都不等于 null，
+     * 于是节点永远 401 —— 后台「系统配置」里手动填一个才行。
+     * 这里装完直接生成，省掉这一步。
+     *
+     * 幂等：已存在的键一律跳过，绝不覆盖用户改过的值。
+     */
+    public static function initDefaultSettings(): void
+    {
+        $defaults = [
+            // XrayR / 面板通讯密钥，ConfigSave 要求最少 16 位
+            'server_token' => Helper::guid() . Helper::guid(),
+            // 节点配置拉取间隔（秒），UniProxyController::config 会下发给 XrayR
+            'server_pull_interval' => 60,
+            // 节点流量上报间隔（秒）
+            'server_push_interval' => 60,
+        ];
+
+        foreach ($defaults as $name => $value) {
+            if (DB::table('v2_settings')->where('name', $name)->exists()) {
+                continue;
+            }
+            // 直接用 DB 写，绕开 App\Support\Setting 里对 Redis 的依赖
+            // （安装阶段 CACHE_DRIVER=array，Redis 未必可用）
+            DB::table('v2_settings')->insert([
+                'name' => $name,
+                'value' => (string) $value,
+                'created_at' => time(),
+                'updated_at' => time(),
+            ]);
         }
     }
 
