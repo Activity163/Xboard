@@ -1,4 +1,7 @@
 * text=auto
+# 容器入口脚本必须保持 LF，否则 Alpine 里会报 bad interpreter
+*.sh text eol=lf
+.docker/entrypoint.sh text eol=lf
 *.css linguist-vendored
 *.scss linguist-vendored
 *.js linguist-vendored
