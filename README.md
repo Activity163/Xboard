@@ -89,7 +89,12 @@ docker compose -f compose.image.yaml run --rm \
   xboard php artisan xboard:install
 ```
 
-安装程序会自动：生成 `APP_KEY` → 建库导入 → 创建管理员 → 安装默认插件。
+安装程序会自动：生成 `APP_KEY` → 建库导入 → **初始化 `server_token`** →
+**创建默认订阅「章鱼哥专属」** → 创建管理员（并分配该订阅）→ 安装默认插件。
+
+> `server_token` 是 XrayR 与面板通讯的密钥，不初始化的话节点会一直
+> `422 Invalid token`（`v2_settings` 空表时 `admin_setting()` 返回 null）。
+> 安装程序已自动生成，也可在后台「系统配置」里改。
 
 > ⚠️ 两点务必注意：
 > - **不要加 `-it`**。远程 SSH 无 TTY，会报 `cannot attach stdin to a TTY-enabled container`。
@@ -103,6 +108,12 @@ docker compose -f compose.image.yaml logs -f xboard   # 观察启动日志
 ```
 
 终端会打印**管理面板地址**（`http://<你的IP>:7001/<secure_path>`）与**管理员密码**，请立即保存。
+
+> 后台路径**不落盘**，只在那一次输出里出现。忘了可以重算 ——
+> 它等于 `crc32b(APP_KEY)`：
+> ```bash
+> docker exec xboard php -r 'echo hash("crc32b", config("app.key")), "\n";'
+> ```
 
 **5. 收尾**
 
