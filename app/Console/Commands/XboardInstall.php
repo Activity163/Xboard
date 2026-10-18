@@ -178,7 +178,9 @@ class XboardInstall extends Command
                 abort(500, '管理员账号注册失败，请重试');
             }
             if ($defaultPlanId) {
-                $admin = User::where('email', $email)->first();
+                // 必须用 byEmail 作用域：User 模型会把 email 归一化成小写，
+                // 直接 where('email', $email) 拿原始大小写去比会查不到。
+                $admin = User::byEmail($email)->first();
                 if ($admin) {
                     $admin->plan_id = $defaultPlanId;
                     // UserObserver 会把套餐的 group_id / transfer_enable / expired_at 落实下去
